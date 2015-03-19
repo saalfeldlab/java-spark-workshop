@@ -10,5 +10,5 @@ to `/path/to/copy/of/example.sh` and modify `$ROOT_DIR` such that it points to `
 
 `ssh login1` and execute
 ```bash
-N_NODES=<N> `/path/to/copy/of/example.sh`
+N_NODES=<N> /path/to/copy/of/example.sh
 ```
