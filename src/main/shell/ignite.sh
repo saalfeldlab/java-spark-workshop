@@ -8,12 +8,11 @@ else
     
 
     N_NODES=$1; shift
-    SCRIPT=`realpath "$1"`; shift
+    SCRIPT=`readlink -f "$1"`; shift
     ARGV=$@
 
-    
     OWN_DIR=`dirname "${BASH_SOURCE[0]}"`
-    OWN_DIR_ABS_PATH=`realpath "$OWN_DIR"`
+    OWN_DIR_ABS_PATH=`readlink -f "$OWN_DIR"`
     ROOT_DIR=${ROOT_DIR:-$OWN_DIR_ABS_PATH}
     QSUB_WRAPPER=$ROOT_DIR/qsub-wrapper.sh
 
