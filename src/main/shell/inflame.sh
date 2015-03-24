@@ -13,14 +13,14 @@ else
     TEMPLATE="${ROOT_DIR}/template.sh"
     TMP="${TMP:-$HOME/tmp}"
     N="$1"; shift
-    JAR="$1"; shift
+    JAR="`readlink -f $1`"; shift
     CLASS="$1"; shift
     ARGV="$@"
 
     mkdir -p "$TMP"
     SCRIPT="`mktemp --tmpdir=$TMP`"
-    echo $SCRIPT
     printf "`cat $TEMPLATE`" "$JAR" "$CLASS" > "$SCRIPT"
+    chmod +rx "$SCRIPT"
 
     "$IGNITE" "$N" "$SCRIPT" "$ARGV"
 fi
