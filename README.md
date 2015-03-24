@@ -1,7 +1,20 @@
 # flintstone
 Ingition for your spark jobs
 
-Create your spark launcher `/path/to/your/script.sh` for your Java Spark main class like:
+The easiest way is to just call
+```bash
+<flintstone-root>/src/main/shell/inflame.sh <N_NODES> <JAR> <CLASS> <ARGV>
+```
+where
+ - `<N_NODES` - number of worker nodes
+ - `<JAR>` - path to jar containing your class and all dependencies
+ - `<CLASS>` - class that holds spark main function
+ - `<ARGV>` - any arguments passed to your class
+
+This will create a spark launcher from `<flintstone-root>/src/main/shell/template.sh` for you and run it using the appropriate arguments.
+
+
+For more flexibility, create your spark launcher `/path/to/your/script.sh` for your Java Spark main class like:
 https://github.com/saalfeldlab/flintstone/blob/master/src/main/shell/get-sum-of-integers.sh
 
 You can run 
@@ -19,6 +32,10 @@ cd <flintstone-root>/example
 ./example.sh
 ```
 `example.sh` will call `<flintstone-root>/example/get-sum-of-integers.sh` as a script.
+Equivalently, you could also call:
+```bash
+<flintstone-root>/src/main/shell/inflame.sh <N_NODES> <flintstone-root>/target/flintstone-0.0.1-SNAPSHOT.jar org.janelia.flintstone.Example <N>
+```
 
-For convenience, you can copy the contents of `<flintstone-root>/src/main/shell` to `/any/other/location`. Make sure that all three scripts are present at `/any/other/location`.
+For convenience, you can copy the contents of `<flintstone-root>/src/main/shell` to `/any/other/location`. Make sure that all four scripts and `template.sh` are present at `/any/other/location`.
 
