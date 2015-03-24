@@ -4,7 +4,7 @@
 export SPARK_HOME=${SPARK_HOME:-/usr/local/spark-current}
 export PATH=$SPARK_HOME:$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH
 
-JAR=`realpath "%s"`
+JAR=`readlink -f "%s"`
 CLASS=%s
 
 if [ -z $PARALLELISM ]; then

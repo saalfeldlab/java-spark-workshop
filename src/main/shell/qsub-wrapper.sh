@@ -1,7 +1,7 @@
 #!/bin/bash
 
 OWN_DIR=`dirname "${BASH_SOURCE[0]}"`
-OWN_DIR_ABS_PATH=`realpath "$OWN_DIR"`
+OWN_DIR_ABS_PATH=`readlink -f "$OWN_DIR"`
 DEFAULT_WRAPPER_FILE=$OWN_DIR_ABS_PATH/qsub-argument-wrap-script.sh
 
 USAGE="[WRAPPER_FILE=<WRAPPER_FILE>] $0 <script-file> <argv for script-file>

@@ -5,8 +5,8 @@ export SPARK_HOME=${SPARK_HOME:-/usr/local/spark-current}
 export PATH=$SPARK_HOME:$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH
 
 OWN_DIR=`dirname "${BASH_SOURCE[0]}"`
-OWN_DIR_ABS_PATH=`realpath "$OWN_DIR"`
-JAR=`realpath "$OWN_DIR_ABS_PATH/../target/flintstone-0.0.1-SNAPSHOT.jar"`
+OWN_DIR_ABS_PATH=`readlink -f "$OWN_DIR"`
+JAR=`readlink -f "$OWN_DIR_ABS_PATH/../target/flintstone-0.0.1-SNAPSHOT.jar"`
 CLASS=org.janelia.flintstone.Example
 
 if [ -z $PARALLELISM ]; then
