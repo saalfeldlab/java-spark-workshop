@@ -8,7 +8,7 @@ and reduce-like functionality for cases in which the result type differs from th
 is lazy and happens only when requested. By default, Spark does not store the result of an operation (map or reduce-like)
 on an RDD in memory, unless explicitly specified by the user.  For the Saalfeld lab, Spark has become a tool that
 simplifies big data computation on the cluster and we would like to share tools and experience as well as receive
-input to avoid redundante work effort in a tutorial on Thursday, 04/02, 9:30am.  In general, many labs would profit 
+input to avoid redundante work effort in a tutorial on *Thursday, 04/02, 9:30am*.  In general, many labs would profit 
 from the ease of use of Spark for large-scale projects.
 
 ## Prerequisites
