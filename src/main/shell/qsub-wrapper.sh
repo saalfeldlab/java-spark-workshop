@@ -20,6 +20,7 @@ WRAPPER_FILE=${WRAPPER_FILE:-$DEFAULT_WRAPPER_FILE}
 SCRIPT_FILE="$1"
 shift
 mkdir -p "$TMP"
+mkdir -p ~/.sparklogs
 FILENAME=`mktemp --tmpdir="$TMP"`
 JOB=`qsub -jc spark -pe spark $(($N_NODES + 1)) -q hadoop2 -j y -o ~/.sparklogs "$WRAPPER_FILE" "$FILENAME" "$SCRIPT_FILE" $@ | awk '{print $3}'`
 echo $JOB > $FILENAME
