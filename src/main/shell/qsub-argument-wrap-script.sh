@@ -1,4 +1,3 @@
-#$ -N Similarities
 #$ -S /bin/bash
 
 wait_for_job_file () {
