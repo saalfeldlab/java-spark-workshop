@@ -44,3 +44,12 @@ sed -r 's/^M/\n/g' ~/.sparklogs/qsub-argument-wrap-script.sh.o<job-id> | less
 The last line converts `^M` to newlines and pipes the output to less for viewing. The expected result of the
 computation is `N*(N+1)/2`. Change the value of `N` inside `example-sum-of-integers.sh` and compare with the
 result.
+
+## Example Projects
+ - *org.janelia.workshop.spark.IntegerSum*
+   - Parameters
+     - **N** - calculate sum from 1 to **N**
+ - *org.janelia.workshop.spark.InjectionRendering*
+   - Parameters
+ - *org.janelia.workshop.spark.SparkSimilarities*
+   - Parameters
