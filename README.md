@@ -10,3 +10,15 @@ on an RDD in memory, unless explicitly specified by the user.  For the Saalfeld 
 simplifies big data computation on the cluster and we would like to share tools and experience as well as receive
 input to avoid redundante work effort in a tutorial on Thursday, 04/02, 9:30am.  In general, many labs would profit 
 from the ease of use of Spark for large-scale projects.
+
+## Prerequisites
+
+For the tutorial, please bring and prepare the following:
+ - Laptop with
+    - access to the intranet (vpn or ssh)
+    - [Eclipse Luna](https://www.eclipse.org/downloads/packages/eclipse-ide-java-developers/lunasr2) with Maven integration
+    - Posix shell and ssh-client
+    - Git for accessing and modifying this repository
+    - Maven installed in addition to Eclipse's m2e plugin
+ - Build a project (ideally this workshop project) to fill your local Maven repository with all/most of the dependenceies
+
