@@ -22,3 +22,25 @@ For the tutorial, please bring and prepare the following:
     - Maven installed in addition to Eclipse's m2e plugin
  - Build a project (ideally this workshop project) to fill your local Maven repository with all/most of the dependenceies
 
+
+The best way of preparing Spark jobs is to use Eclipse to compile your Java code in a location that is accessible from a cluster node.  That way, there is no need to transfer the jar files onto the cluster and you can make sure you are alywas using the latest build of your software.  Once that is done, login to login1 and submit your spark job like this:
+```bash
+ssh login1
+/path/to/java-spark-workshop/inflame.sh <N_NODES> /path/to/jar <class.to.be.Used> <ARGV>
+qstat
+```
+`qstat` will give you the `<job-id>` for looking up the log file and the `<spark-master>`.  You can check the
+status of your Spark job through the webinterface at `<spark-master>:8080`. Any standard output from the master
+will be written to `~/.sparklogs/qsub-argument-wrap-script.sh.o<job-id>`.
+
+### How to run an example
+To run the example job (Sum of integers from 1 to N), after compiling the project, do:
+```bash
+ssh login1
+/path/to/java-spark-workshop/example-sum-of-integers.sh
+qstat
+sed -r 's/^M/\n/g' ~/.sparklogs/qsub-argument-wrap-script.sh.o<job-id> | less
+```
+The last line converts `^M` to newlines and pipes the output to less for viewing. The expected result of the
+computation is `N*(N+1)/2`. Change the value of `N` inside `example-sum-of-integers.sh` and compare with the
+result.
