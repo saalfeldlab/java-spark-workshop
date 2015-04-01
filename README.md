@@ -22,6 +22,11 @@ For the tutorial, please bring and prepare the following:
     - Maven installed in addition to Eclipse's m2e plugin
  - Build a project (ideally this workshop project) to fill your local Maven repository with all/most of the dependenceies
 
+***
+**NOTE**: Thanks to [Eric Perlman](https://github.com/perlman), we know that Eclipse converts symlinks to text
+files when cloning a git repository. For that reason, clone this repository manually and then import the repository
+as a Maven project from within Eclipse.
+***
 
 The best way of preparing Spark jobs is to use Eclipse to compile your Java code in a location that is accessible
 from a cluster node.  That way, there is no need to transfer the jar files onto the cluster and you can make sure
