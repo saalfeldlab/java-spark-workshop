@@ -57,7 +57,7 @@ result.
 
 ## Example Projects
  - *org.janelia.workshop.spark.IntegerSum*
-   - Parameters
+   - Parameters (positional)
      - **N** - calculate sum from 1 to **N**
  - *org.janelia.workshop.spark.InjectionRendering*
    - Parameters
@@ -79,7 +79,7 @@ result.
      - **-r/--range `<range>`** Maximum possible distance between images (in pixels) for calculation of similarity
      - **-s/--scale `<scale>`** Scale down by <scale> levels (powers of two)
  - *org.janelia.workshop.spark.Downsampling*
-   - Parameters
+   - Parameters (positional)
      - **input format** Format String for input images
      - **min** Use images starting with *min*
      - **max** Use images until *max* (exclusive)
