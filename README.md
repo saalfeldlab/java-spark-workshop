@@ -11,6 +11,8 @@ simplifies big data computation on the cluster and we would like to share tools 
 input to avoid redundante work effort in a tutorial on *Thursday, 04/02, 9:30am*.  In general, many labs would profit 
 from the ease of use of Spark for large-scale projects.
 
+If you want to chat about Spark at Janelia or ever have questions, we maintain a [chatroom](https://gitter.im/freeman-lab/spark-janelia) and you can usually find at least some of us in there!
+
 ## Prerequisites
 
 For the tutorial, please bring and prepare the following:
@@ -57,9 +59,31 @@ result.
 
 ## Example Projects
  - *org.janelia.workshop.spark.IntegerSum*
-   - Parameters
+   - Parameters (positional)
      - **N** - calculate sum from 1 to **N**
  - *org.janelia.workshop.spark.InjectionRendering*
    - Parameters
+     - **-f/--format `<path>`** Format string for input files
+     - **-o/--output `<path>`** Format string for output files
+     - **-m/--minimum-index `<min>`** Use images starting with <min>
+     - **-M/--maximun-index `<max>`** Use images until <max> (exclusive)
+     - **-F/--from-file** Interpret *-f/--format* as path to a file that contains the names of input files
+     - **-c/--coordinate-transform `<path>`** Path to file containing coordinate transform
+     - **-n/--n-scans-per-section `<n>`** How many scans were performed for each section?
+     - **-k/--k-nearest-neighbors` <k>`** Number of nearest neighbors for injection
  - *org.janelia.workshop.spark.SparkSimilarities*
    - Parameters
+     - **-f/--format `<path>`** Format string for input files
+     - **-o/--output `<path>`** Format string for output files
+     - **-m/--minimum-index `<min>`** Use images starting with <min>
+     - **-M/--maximun-index `<max>`** Use images until <max> (exclusive)
+     - **-F/--from-file** Interpret *-f/--format* as path to a file that contains the names of input files
+     - **-r/--range `<range>`** Maximum possible distance between images (in pixels) for calculation of similarity
+     - **-s/--scale `<scale>`** Scale down by <scale> levels (powers of two)
+ - *org.janelia.workshop.spark.Downsampling*
+   - Parameters (positional)
+     - **input format** Format String for input images
+     - **min** Use images starting with *min*
+     - **max** Use images until *max* (exclusive)
+     - **level** Scale down by *level* levels (powers of two
+     - **output format** Format String for output files
