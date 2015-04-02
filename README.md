@@ -61,5 +61,13 @@ result.
      - **N** - calculate sum from 1 to **N**
  - *org.janelia.workshop.spark.InjectionRendering*
    - Parameters
+     - **-f/--format `<path>`** Format string for input files
+     - **-o/--output `<path>`** Format string for output files
+     - **-m/--minimum-index `<min>`** Use images starting with <min>
+     - **-M/--maximun-index `<max>`** Use images until <max> (exclusive)
+     - **-F/--from-file** Interpret *-f/--format* as path to a file that contains the names of input files
+     - **-c/--coordinate-transform `<path>`** Path to file containing coordinate transform
+     - **-n/--n-scans-per-section `<n>`** How many scans were performed for each section?
+     - **-k/--k-nearest-neighbors` <k>`** Number of nearest neighbors for injection
  - *org.janelia.workshop.spark.SparkSimilarities*
    - Parameters
