@@ -71,3 +71,10 @@ result.
      - **-k/--k-nearest-neighbors` <k>`** Number of nearest neighbors for injection
  - *org.janelia.workshop.spark.SparkSimilarities*
    - Parameters
+     - **-f/--format `<path>`** Format string for input files
+     - **-o/--output `<path>`** Format string for output files
+     - **-m/--minimum-index `<min>`** Use images starting with <min>
+     - **-M/--maximun-index `<max>`** Use images until <max> (exclusive)
+     - **-F/--from-file** Interpret *-f/--format* as path to a file that contains the names of input files
+     - **-r/--range `<range>`** Maximum possible distance between images (in pixels) for calculation of similarity
+     - **-s/--scale `<scale>`** By how many levels (powers of two) shall the images be scaled down
