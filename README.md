@@ -11,6 +11,8 @@ simplifies big data computation on the cluster and we would like to share tools 
 input to avoid redundante work effort in a tutorial on *Thursday, 04/02, 9:30am*.  In general, many labs would profit 
 from the ease of use of Spark for large-scale projects.
 
+If you want to chat about Spark at Janelia or ever have questions, we maintain a [chatroom](https://gitter.im/freeman-lab/spark-janelia) and you can usually find at least some of us in there!
+
 ## Prerequisites
 
 For the tutorial, please bring and prepare the following:
