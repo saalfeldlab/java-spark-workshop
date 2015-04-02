@@ -77,4 +77,11 @@ result.
      - **-M/--maximun-index `<max>`** Use images until <max> (exclusive)
      - **-F/--from-file** Interpret *-f/--format* as path to a file that contains the names of input files
      - **-r/--range `<range>`** Maximum possible distance between images (in pixels) for calculation of similarity
-     - **-s/--scale `<scale>`** By how many levels (powers of two) shall the images be scaled down
+     - **-s/--scale `<scale>`** Scale down by <scale> levels (powers of two)
+ - *org.janelia.workshop.spark.Downsampling*
+   - Parameters
+     - **input format** Format String for input images
+     - **min** Use images starting with *min*
+     - **max** Use images until *max* (exclusive)
+     - **level** Scale down by *level* levels (powers of two
+     - **output format** Format String for output files
