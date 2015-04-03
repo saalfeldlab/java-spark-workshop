@@ -22,5 +22,7 @@ else
     printf "`cat $TEMPLATE`" "$JAR" "$CLASS" > "$SCRIPT"
     chmod +rx "$SCRIPT"
 
+    export JOB_NAME=$CLASS
+
     "$IGNITE" "$N_NODES" "$SCRIPT" "$ARGV"
 fi
