@@ -11,7 +11,7 @@ where
  - `<CLASS>` - class that holds spark main function
  - `<ARGV>` - any arguments passed to your class
 
-This will create a spark launcher from `<flintstone-root>/src/main/shell/template.sh` for you and run it using the appropriate arguments.
+This will create a spark launcher from `<flintstone-root>/src/main/shell/template.sh` for you and run it using the appropriate arguments. In most cases, it makes sense to wrap the call to `inflame.sh` into a script that also stores the complete `<ARGV>` for reproducability and ease of use in case of a very long `<ARGV>`.
 
 
 For more flexibility, create your spark launcher `/path/to/your/script.sh` for your Java Spark main class like:

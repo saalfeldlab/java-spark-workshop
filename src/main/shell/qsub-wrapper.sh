@@ -23,6 +23,7 @@ if [ -n "$JOB_NAME" ]; then
 fi
 shift
 mkdir -p "$TMP"
+mkdir -p ~/.sparklogs
 FILENAME=`mktemp --tmpdir="$TMP"`
 JOB=`qsub $NAME_OPTION -jc spark -pe spark $(($N_NODES + 1)) -q hadoop2 -j y -o ~/.sparklogs "$WRAPPER_FILE" "$FILENAME" "$SCRIPT_FILE" $@ | awk '{print $3}'`
 # echo $JOB > $FILENAME
