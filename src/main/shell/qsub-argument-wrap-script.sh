@@ -44,6 +44,8 @@ N_NODES=`echo $JOB_INFO | awk '{print $10}'`
 N_NODES=$(($N_NODES - 1))
 N_CORES_PER_MACHINE=16
 
+/usr/local/spark-current/sbin/start-master.sh
+
 export PARALLELISM=$(($N_NODES * $N_CORES_PER_MACHINE * 3))
 export MASTER="spark://$HOST:7077"
 
