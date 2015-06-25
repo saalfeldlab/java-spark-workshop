@@ -4,10 +4,10 @@ wait_for_job_file () {
     COUNT=1
     MAX_COUNT=100
     SUCCESS=1
-    while [ ! -f "$1" ]; do
+    while [ ! -s "$1" ]; do
         printf "sleeping for 2 seconds... %02d/100\n" "$COUNT" >&2
         sleep 2
-        if [ "$COUNT" -eq "5" ]; then
+        if [ "$COUNT" -eq "$MAX_COUNT" ]; then
             echo "Could not find job file after 200s, killing job." >&2
             SUCCESS=0
             break
@@ -43,6 +43,8 @@ HOST=`echo $JOB_INFO | awk '{print $8}' | cut -d@ -f2`
 N_NODES=`echo $JOB_INFO | awk '{print $10}'`
 N_NODES=$(($N_NODES - 1))
 N_CORES_PER_MACHINE=16
+
+/usr/local/spark-current/sbin/start-master.sh
 
 export PARALLELISM=$(($N_NODES * $N_CORES_PER_MACHINE * 3))
 export MASTER="spark://$HOST:7077"
