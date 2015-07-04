@@ -3,22 +3,21 @@
  */
 package org.janelia.saalfeldlab.renderalign;
 
-import ij.IJ;
 import ij.ImageJ;
 import ij.ImagePlus;
 import ij.ImageStack;
 import ij.process.ByteProcessor;
 import ij.process.ColorProcessor;
-import ij.process.FloatProcessor;
 
 import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Serializable;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -26,22 +25,16 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import mpicbg.ij.FeatureTransform;
-import mpicbg.ij.SIFT;
-import mpicbg.imagefeatures.Feature;
-import mpicbg.imagefeatures.FloatArray2DSIFT;
-import mpicbg.models.AffineModel2D;
-import mpicbg.models.NotEnoughDataPointsException;
-import mpicbg.models.PointMatch;
+import mpicbg.util.Timer;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
 import org.janelia.alignment.Render;
 import org.janelia.alignment.RenderParameters;
+import org.janelia.alignment.Utils;
 import org.janelia.alignment.json.JsonUtils;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
@@ -73,20 +66,23 @@ public class SimilarityRenderMontages {
 		@Option(name = "-s", aliases = {"--stack"}, required = true, usage = "Stack ID.")
 		private String stackId = "v5_align_tps";
 
-		@Option(name = "-x", aliases = {"--x"}, required = true, usage = "Left most pixel coordinate in world coordinates.")
-		private Double x = 100000.0;
+		@Option(name = "-x", aliases = {"--x"}, required = false, usage = "Left most pixel coordinate in world coordinates.  Default is bounds.minX of the stack.")
+		private Double x = null;
 
-		@Option(name = "-y", aliases = {"--y"}, required = true, usage = "Top most pixel coordinate in world coordinates.")
-		private Double y = 60000.0;
+		@Option(name = "-y", aliases = {"--y"}, required = false, usage = "Top most pixel coordinate in world coordinates.  Default is bounds.minY of the stack.")
+		private Double y = null;
 
-		@Option(name = "-w", aliases = {"--width"}, required = true, usage = "Width in world coordinates.")
-		private Double w = 2048.0 * 8.0;
+		@Option(name = "-w", aliases = {"--width"}, required = false, usage = "Width in world coordinates.  Default is bounds.maxX - x of the stack.")
+		private Double w = null;
 
-		@Option(name = "-h", aliases = {"--height"}, required = true, usage = "Height in world coordinates.")
-		private Double h = 2048.0 * 8.0;
+		@Option(name = "-h", aliases = {"--height"}, required = false, usage = "Height in world coordinates.  Default is bounds.maxY - y of the stack.")
+		private Double h = null;
 
 		@Option(name = "-t", aliases = {"--scale"}, required = true, usage = "Scale.")
 		private Double scale = 1.0 / 8.0;
+
+		@Option(name = "-o", aliases = {"--outputpath"}, required = true, usage = "Output path.")
+		private String outputPath = "/tmp/";
 
 	    private boolean parsedSuccessfully = false;
 
@@ -99,6 +95,9 @@ public class SimilarityRenderMontages {
 				System.err.println(e.getMessage());
 				parser.printUsage(System.err);
 			}
+
+			if (!outputPath.endsWith("/"))
+				outputPath += "/";
 		}
 
 		public String getServer() {
@@ -142,7 +141,18 @@ public class SimilarityRenderMontages {
 		}
 	}
 
+	private static class Bounds {
+		public Double minX = null;
+		public Double minY = null;
+		public Double minZ = null;
+		public Double maxX = null;
+		public Double maxY = null;
+		public Double maxZ = null;
+	}
+
 	public static void main(final String... args) throws IllegalArgumentException, IOException, InterruptedException, ExecutionException {
+
+		System.out.println("*************** Job started! ***************");
 
 		final Options options = new Options(args);
 
@@ -151,31 +161,83 @@ public class SimilarityRenderMontages {
                 "/project/" + options.getProjectId() +
                 "/stack/" + options.getStackId();
 
-		final URL zValuesUrl = new URL(baseUrlString + "/zValues");
-//		final ArrayList<Double> zs =
-//		        JsonUtils.GSON.fromJson(
-//		                new InputStreamReader(zValuesUrl.openStream()),
-//		                new TypeToken<ArrayList<Double>>(){}.getType());
+		System.out.println("Fetching z-indices from render database...");
+		System.out.println(baseUrlString);
 
-		final List<Double> zs = Arrays.asList(new Double[]{
-				  3451.0,
-				  3452.0,
-				  3453.0,
-				  3454.0,
-				  3455.0,
-				  3456.0,
-				  3457.0,
-				  3458.0,
-				  3459.0,
-				  3460.0,
-				  3461.0,
-				  3462.0,
-				  3463.0,
-				  3464.0,
-				  3465.0,
-				  3466.0,
-				  3467.0
-			});
+		final URL zValuesUrl = new URL(baseUrlString + "/zValues");
+		ArrayList<Double> zs =
+		        JsonUtils.GSON.fromJson(
+		                new InputStreamReader(zValuesUrl.openStream()),
+		                new TypeToken<ArrayList<Double>>(){}.getType());
+
+		System.out.println("Stack z-indices fetched (" + zs.size() + "):");
+		System.out.println(JsonUtils.GSON.toJson(zs));
+
+		/* recover after breaking jobs */
+		/* exclude successfully rendered images */
+		final File outputDir = new File(options.outputPath);
+		final List<String> files = Arrays.asList(
+				outputDir.list(
+					new FilenameFilter() {
+
+						@Override
+						public boolean accept(final File dir, final String name) {
+							return name.endsWith(".png");
+						}
+					}));
+
+		final ArrayList<Double> zsTBD = new ArrayList<Double>();
+		for (final Double zValue : zs ) {
+			if (!files.contains(zValue.toString() + ".png"))
+				zsTBD.add(zValue);
+		}
+
+		zs = zsTBD;
+
+		System.out.println("Stack z-indices TBD (" + zs.size() + "):");
+		System.out.println(JsonUtils.GSON.toJson(zs));
+
+//		final List<Double> zs = Arrays.asList(new Double[]{
+//				  3451.0,
+//				  3452.0,
+//				  3453.0,
+//				  3454.0,
+//				  3455.0,
+//				  3456.0,
+//				  3457.0,
+//				  3458.0,
+//				  3459.0,
+//				  3460.0,
+//				  3461.0,
+//				  3462.0,
+//				  3463.0,
+//				  3464.0,
+//				  3465.0,
+//				  3466.0,
+//				  3467.0
+//			});
+
+		final URL boundsUrl = new URL(baseUrlString + "/bounds");
+		final Bounds bounds =
+		        JsonUtils.GSON.fromJson(
+		                new InputStreamReader(boundsUrl.openStream()),
+		                Bounds.class);
+
+		System.out.println("Stack bounds fetched:");
+		System.out.println(JsonUtils.GSON.toJson(bounds));
+
+		if (options.x == null)
+			options.x = bounds.minX;
+		if (options.y == null)
+			options.y = bounds.minY;
+		if (options.w == null)
+			options.w = bounds.maxX - options.x;
+		if (options.h == null)
+			options.h = bounds.maxY - options.y;
+
+		System.out.println("Updated options:");
+		System.out.println(JsonUtils.GSON.toJson(options));
+
 
 		final String urlString =
 				baseUrlString +
@@ -186,6 +248,11 @@ public class SimilarityRenderMontages {
         final JavaSparkContext sc = new JavaSparkContext(conf);
 
 		final JavaRDD<Double> rddZ = sc.parallelize(zs);
+
+		rddZ.cache();
+		System.out.println("rddZ count = " + rddZ.count());
+
+
 		final JavaPairRDD<Double, String> urls = rddZ.mapToPair(
 				new PairFunction<Double, Double, String>() {
 
@@ -194,6 +261,9 @@ public class SimilarityRenderMontages {
 						return new Tuple2<Double, String>(z, String.format(urlString, z));
 					}
 				});
+
+		urls.cache();
+		System.out.println("urls count = " + urls.count());
 
 		final JavaPairRDD<Double, RenderParameters> parameters = urls.mapToPair(
 				new PairFunction<Tuple2<Double, String>, Double, RenderParameters>() {
@@ -205,6 +275,9 @@ public class SimilarityRenderMontages {
 								RenderParameters.parseJson(new InputStreamReader(new URL(pair._2()).openStream())));
 					}
 				});
+
+		parameters.cache();
+		System.out.println("parameters count = " + parameters.count());
 
 		final JavaPairRDD<Double, BufferedImage> images = parameters.mapToPair(
 				new PairFunction<Tuple2<Double, RenderParameters>, Double, BufferedImage>() {
@@ -218,6 +291,8 @@ public class SimilarityRenderMontages {
 						mpicbg.ij.util.Util.fillWithNoise(ip);
 						targetImage.getGraphics().drawImage(ip.createImage(), 0, 0, null);
 
+						final Timer timer = new Timer();
+						timer.start();
 						try {
         					Render.render(
         							param.getTileSpecs(),
@@ -234,6 +309,15 @@ public class SimilarityRenderMontages {
 						    System.out.println("Failed rendering layer " + pair._1() + " because");
 						    e.printStackTrace(System.out);
 						}
+						timer.stop();
+
+						Utils.saveImage(
+								targetImage,
+								options.outputPath + pair._1() + ".png",
+								"png",
+								true,
+								9);
+
 
 						return new Tuple2<Double, BufferedImage>(
 								pair._1(),
@@ -241,131 +325,134 @@ public class SimilarityRenderMontages {
 					}
 				});
 
-		final JavaPairRDD<Double, ArrayList<Feature>> features = images.mapToPair(
-				new PairFunction<Tuple2<Double, BufferedImage>, Double, ArrayList<Feature>>() {
+//		images.persist(StorageLevel.DISK_ONLY());
+		System.out.println("images count = " + images.count());
 
-					@Override
-					public Tuple2<Double, ArrayList<Feature>> call(final Tuple2<Double, BufferedImage> pair) throws Exception {
-
-						final BufferedImage img = pair._2();
-						final ColorProcessor ip = new ColorProcessor(img);
-
-						final FloatArray2DSIFT.Param p = new FloatArray2DSIFT.Param();
-
-						p.fdSize = 4;
-						p.maxOctaveSize = 4000;
-						p.minOctaveSize = 1500;
-
-						final FloatArray2DSIFT sift = new FloatArray2DSIFT(p);
-						final SIFT ijSIFT = new SIFT(sift);
-
-						final ArrayList<Feature> fs = new ArrayList<Feature>();
-						ijSIFT.extractFeatures(ip, fs);
-						return new Tuple2<Double, ArrayList<Feature>>(pair._1(), fs);
-					}
-				});
-
-		features.cache();
-
-		final JavaPairRDD<Tuple2<Double, ArrayList<Feature>>, Tuple2<Double, ArrayList<Feature>>> cartesian = features.cartesian(features);
-
-		final JavaPairRDD<Tuple2<Double, Double>, Double> similarity = cartesian.mapToPair(
-				new PairFunction<Tuple2<Tuple2<Double, ArrayList<Feature>>, Tuple2<Double, ArrayList<Feature>>>, Tuple2<Double, Double>, Double>() {
-
-					@Override
-					public Tuple2<Tuple2<Double, Double>, Double> call(final Tuple2<Tuple2<Double, ArrayList<Feature>>, Tuple2<Double, ArrayList<Feature>>> pair) {
-
-						final float rod = 0.92f;
-						final float maxEpsilon = 50f;
-						final float minInlierRatio = 0.0f;
-						final int minNumInliers = 20;
-						final AffineModel2D model = new AffineModel2D();
-
-						final Double z1 = pair._1()._1();
-						final Double z2 = pair._2()._1();
-						final ArrayList<Feature> features1 = pair._1()._2();
-						final ArrayList<Feature> features2 = pair._2()._2();
-
-						double inlierRatio = 0;
-
-						if (features1.size() > 0 && features2.size() > 0) {
-							final ArrayList<PointMatch> candidates = new ArrayList<PointMatch>();
-							final ArrayList<PointMatch> inliers = new ArrayList<PointMatch>();
-
-							FeatureTransform.matchFeatures(features1, features2, candidates, rod);
-
-							boolean modelFound = false;
-							try {
-								modelFound = model.filterRansac(
-										candidates,
-										inliers,
-										1000,
-										maxEpsilon,
-										minInlierRatio,
-										minNumInliers,
-										3);
-							} catch (final NotEnoughDataPointsException e) {
-								modelFound = false;
-							}
-
-							if (modelFound)
-								inlierRatio = (double)inliers.size() / candidates.size();
-						}
-						return new Tuple2<Tuple2<Double, Double>, Double>(new Tuple2<Double, Double>(z1, z2), inlierRatio);
-					}
-				});
-
-		/* inverse z-position lookup */
-		final int n = zs.size();
-		final HashMap<Double, Integer> zLUT = new HashMap<Double, Integer>();
-		for (int i = 0; i < n; ++i)
-			zLUT.put(zs.get(i), i);
-
-		/* generate matrix */
-		final FloatProcessor matrix = new FloatProcessor(n, n);
-		matrix.add(Double.NaN);
-		for (int i = 0; i < n; ++i)
-			matrix.setf(i, i, 1.0f);
-
-		matrix.setMinAndMax(0, 1);
-
-		final float[] pixels = (float[])matrix.getPixels();
-
-		/* aggregate */
-		final float[] aggregate = similarity.aggregate(
-				pixels,
-				new Function2<float[], Tuple2<Tuple2<Double, Double>, Double>, float[]>() {
-
-					@Override
-					public float[] call(final float[] v1, final Tuple2<Tuple2<Double, Double>, Double> v2) throws Exception {
-						/* generate matrix */
-						final FloatProcessor matrix = new FloatProcessor(n, n, v1.clone());
-						final int x = zLUT.get(v2._1()._1());
-						final int y = zLUT.get(v2._1()._2());
-						final float v = (float)v2._2().doubleValue();
-						matrix.setf(x, y, v);
-						matrix.setf(y, x, v);
-
-						return (float[])matrix.getPixels();
-					}
-				},
-				new Function2<float[], float[], float[]>() {
-
-					@Override
-					public float[] call(final float[] v1, final float[] v2) throws Exception {
-						/* generate matrix */
-						final float[] v3 = v1.clone();
-						for (int i = 0; i < v3.length; ++i) {
-							final float v = v2[i];
-							if (!Float.isNaN(v))
-								v3[i] = v;
-						}
-
-						return v3;
-					}
-				});
-
-		IJ.saveAsTiff(new ImagePlus("matrix", new FloatProcessor(n, n, aggregate)), "/nobackup/saalfeld/tmp/matrix.tif");
+//		final JavaPairRDD<Double, ArrayList<Feature>> features = images.mapToPair(
+//				new PairFunction<Tuple2<Double, BufferedImage>, Double, ArrayList<Feature>>() {
+//
+//					@Override
+//					public Tuple2<Double, ArrayList<Feature>> call(final Tuple2<Double, BufferedImage> pair) throws Exception {
+//
+//						final BufferedImage img = pair._2();
+//						final ColorProcessor ip = new ColorProcessor(img);
+//
+//						final FloatArray2DSIFT.Param p = new FloatArray2DSIFT.Param();
+//
+//						p.fdSize = 4;
+//						p.maxOctaveSize = 4000;
+//						p.minOctaveSize = 1500;
+//
+//						final FloatArray2DSIFT sift = new FloatArray2DSIFT(p);
+//						final SIFT ijSIFT = new SIFT(sift);
+//
+//						final ArrayList<Feature> fs = new ArrayList<Feature>();
+//						ijSIFT.extractFeatures(ip, fs);
+//						return new Tuple2<Double, ArrayList<Feature>>(pair._1(), fs);
+//					}
+//				});
+//
+//		features.cache();
+//
+//		final JavaPairRDD<Tuple2<Double, ArrayList<Feature>>, Tuple2<Double, ArrayList<Feature>>> cartesian = features.cartesian(features);
+//
+//		final JavaPairRDD<Tuple2<Double, Double>, Double> similarity = cartesian.mapToPair(
+//				new PairFunction<Tuple2<Tuple2<Double, ArrayList<Feature>>, Tuple2<Double, ArrayList<Feature>>>, Tuple2<Double, Double>, Double>() {
+//
+//					@Override
+//					public Tuple2<Tuple2<Double, Double>, Double> call(final Tuple2<Tuple2<Double, ArrayList<Feature>>, Tuple2<Double, ArrayList<Feature>>> pair) {
+//
+//						final float rod = 0.92f;
+//						final float maxEpsilon = 50f;
+//						final float minInlierRatio = 0.0f;
+//						final int minNumInliers = 20;
+//						final AffineModel2D model = new AffineModel2D();
+//
+//						final Double z1 = pair._1()._1();
+//						final Double z2 = pair._2()._1();
+//						final ArrayList<Feature> features1 = pair._1()._2();
+//						final ArrayList<Feature> features2 = pair._2()._2();
+//
+//						double inlierRatio = 0;
+//
+//						if (features1.size() > 0 && features2.size() > 0) {
+//							final ArrayList<PointMatch> candidates = new ArrayList<PointMatch>();
+//							final ArrayList<PointMatch> inliers = new ArrayList<PointMatch>();
+//
+//							FeatureTransform.matchFeatures(features1, features2, candidates, rod);
+//
+//							boolean modelFound = false;
+//							try {
+//								modelFound = model.filterRansac(
+//										candidates,
+//										inliers,
+//										1000,
+//										maxEpsilon,
+//										minInlierRatio,
+//										minNumInliers,
+//										3);
+//							} catch (final NotEnoughDataPointsException e) {
+//								modelFound = false;
+//							}
+//
+//							if (modelFound)
+//								inlierRatio = (double)inliers.size() / candidates.size();
+//						}
+//						return new Tuple2<Tuple2<Double, Double>, Double>(new Tuple2<Double, Double>(z1, z2), inlierRatio);
+//					}
+//				});
+//
+//		/* inverse z-position lookup */
+//		final int n = zs.size();
+//		final HashMap<Double, Integer> zLUT = new HashMap<Double, Integer>();
+//		for (int i = 0; i < n; ++i)
+//			zLUT.put(zs.get(i), i);
+//
+//		/* generate matrix */
+//		final FloatProcessor matrix = new FloatProcessor(n, n);
+//		matrix.add(Double.NaN);
+//		for (int i = 0; i < n; ++i)
+//			matrix.setf(i, i, 1.0f);
+//
+//		matrix.setMinAndMax(0, 1);
+//
+//		final float[] pixels = (float[])matrix.getPixels();
+//
+//		/* aggregate */
+//		final float[] aggregate = similarity.aggregate(
+//				pixels,
+//				new Function2<float[], Tuple2<Tuple2<Double, Double>, Double>, float[]>() {
+//
+//					@Override
+//					public float[] call(final float[] v1, final Tuple2<Tuple2<Double, Double>, Double> v2) throws Exception {
+//						/* generate matrix */
+//						final FloatProcessor matrix = new FloatProcessor(n, n, v1.clone());
+//						final int x = zLUT.get(v2._1()._1());
+//						final int y = zLUT.get(v2._1()._2());
+//						final float v = (float)v2._2().doubleValue();
+//						matrix.setf(x, y, v);
+//						matrix.setf(y, x, v);
+//
+//						return (float[])matrix.getPixels();
+//					}
+//				},
+//				new Function2<float[], float[], float[]>() {
+//
+//					@Override
+//					public float[] call(final float[] v1, final float[] v2) throws Exception {
+//						/* generate matrix */
+//						final float[] v3 = v1.clone();
+//						for (int i = 0; i < v3.length; ++i) {
+//							final float v = v2[i];
+//							if (!Float.isNaN(v))
+//								v3[i] = v;
+//						}
+//
+//						return v3;
+//					}
+//				});
+//
+//		IJ.saveAsTiff(new ImagePlus("matrix", new FloatProcessor(n, n, aggregate)), "/nobackup/saalfeld/tmp/matrix.tif");
 
 		System.out.println("Done.");
 

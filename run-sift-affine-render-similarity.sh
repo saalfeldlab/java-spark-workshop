@@ -8,17 +8,19 @@ N_NODES=20
 SERVER="http://tem-services.int.janelia.org:8080/render-ws/v1"
 OWNER="flyTEM"
 PROJECT="FAFB00"
-STACK="v5_align_tps"
-X="-109.0"
-Y="370.0"
+STACK="v7_align_tps"
+#X="-109.0"
+#Y="370.0"
 #WIDTH="16384"
 #HEIGHT="16384"
-WIDTH="239959.0"
-HEIGHT="148704.0"
+#WIDTH="239959.0"
+#HEIGHT="148704.0"
 SCALE="0.015625"
+OUTPUT="/nobackup/saalfeld/tmp/spark-export/"
 
-ARGV="-S $SERVER -u $OWNER -p $PROJECT -s $STACK -x $X -y $Y -w $WIDTH -h $HEIGHT -t $SCALE"
+#ARGV="-S $SERVER -u $OWNER -p $PROJECT -s $STACK -x $X -y $Y -w $WIDTH -h $HEIGHT -t $SCALE -o $OUTPUT"
+ARGV="-S $SERVER -u $OWNER -p $PROJECT -s $STACK -t $SCALE -o $OUTPUT"
 
-mkdir -p "/nobackup/saalfeld/tmp/spark-export"
+mkdir -p $OUTPUT
 
 $INFLAME $N_NODES $JAR $CLASS $ARGV
