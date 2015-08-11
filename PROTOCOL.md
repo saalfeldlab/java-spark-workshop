@@ -12,6 +12,8 @@ Then the fat jar for Spark
     cd ~/workspace/render-align
     mvn clean package
 
+## Run
+
 Log into the cluster with the same paths available or copy the resulting jar and scripts to the appropriate location
 
     ssh login1
