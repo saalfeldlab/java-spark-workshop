@@ -141,15 +141,6 @@ public class SimilarityRenderMontages {
 		}
 	}
 
-	private static class Bounds {
-		public Double minX = null;
-		public Double minY = null;
-		public Double minZ = null;
-		public Double maxX = null;
-		public Double maxY = null;
-		public Double maxZ = null;
-	}
-
 	public static void main(final String... args) throws IllegalArgumentException, IOException, InterruptedException, ExecutionException {
 
 		System.out.println("*************** Job started! ***************");
@@ -165,7 +156,7 @@ public class SimilarityRenderMontages {
 		System.out.println(baseUrlString);
 
 		final URL zValuesUrl = new URL(baseUrlString + "/zValues");
-		ArrayList<Double> zs =
+		List<Double> zs =
 		        JsonUtils.GSON.fromJson(
 		                new InputStreamReader(zValuesUrl.openStream()),
 		                new TypeToken<ArrayList<Double>>(){}.getType());
@@ -197,52 +188,25 @@ public class SimilarityRenderMontages {
 		System.out.println("Stack z-indices TBD (" + zs.size() + "):");
 		System.out.println(JsonUtils.GSON.toJson(zs));
 
-//		final List<Double> zs = Arrays.asList(new Double[]{
-//				  3451.0,
-//				  3452.0,
-//				  3453.0,
-//				  3454.0,
-//				  3455.0,
-//				  3456.0,
-//				  3457.0,
-//				  3458.0,
-//				  3459.0,
-//				  3460.0,
-//				  3461.0,
-//				  3462.0,
-//				  3463.0,
-//				  3464.0,
-//				  3465.0,
-//				  3466.0,
-//				  3467.0
-//			});
-
-		final URL boundsUrl = new URL(baseUrlString + "/bounds");
-		final Bounds bounds =
-		        JsonUtils.GSON.fromJson(
-		                new InputStreamReader(boundsUrl.openStream()),
-		                Bounds.class);
-
-		System.out.println("Stack bounds fetched:");
-		System.out.println(JsonUtils.GSON.toJson(bounds));
-
-		if (options.x == null)
-			options.x = bounds.minX;
-		if (options.y == null)
-			options.y = bounds.minY;
-		if (options.w == null)
-			options.w = bounds.maxX - options.x;
-		if (options.h == null)
-			options.h = bounds.maxY - options.y;
-
-		System.out.println("Updated options:");
-		System.out.println(JsonUtils.GSON.toJson(options));
-
+//		zs = Arrays.asList(new Double[]{
+//				2050.0,
+//				2051.0,
+//				2052.0,
+//				2053.0,
+//				2054.0,
+//				2055.0,
+//				2056.0,
+//				2057.0,
+//				2058.0,
+//				2059.0,
+//				2060.0,
+//				2061.0,
+//				2062.0
+//		});
 
 		final String urlString =
 				baseUrlString +
-				"/z/%f/box/" + (int)Math.round(options.getX()) + "," + (int)Math.round(options.getY()) + "," + (int)Math.round(options.getW()) + "," + (int)Math.round(options.getH()) + "," + options.getScale() +
-				"/render-parameters";
+				"/z/%f/render-parameters";
 
 		final SparkConf conf      = new SparkConf().setAppName( "RenderSimilarities" );
         final JavaSparkContext sc = new JavaSparkContext(conf);
@@ -270,14 +234,17 @@ public class SimilarityRenderMontages {
 
 					@Override
 					public Tuple2<Double, RenderParameters> call(final Tuple2<Double, String> pair) throws Exception {
+						final RenderParameters parameters = RenderParameters.parseJson(new InputStreamReader(new URL(pair._2()).openStream()));
+						parameters.setScale(options.scale);
+						parameters.initializeDerivedValues();
 						return new Tuple2<Double, RenderParameters>(
 								pair._1(),
-								RenderParameters.parseJson(new InputStreamReader(new URL(pair._2()).openStream())));
+								parameters);
 					}
 				});
 
 		parameters.cache();
-		System.out.println("parameters count = " + parameters.count());
+//		System.out.println("parameters count = " + parameters.count());
 
 		final JavaPairRDD<Double, BufferedImage> images = parameters.mapToPair(
 				new PairFunction<Tuple2<Double, RenderParameters>, Double, BufferedImage>() {
@@ -297,10 +264,10 @@ public class SimilarityRenderMontages {
         					Render.render(
         							param.getTileSpecs(),
         							targetImage,
-        							options.getX(),
-        							options.getY(),
-        							param.getRes(options.getScale()),
-        							options.getScale(),
+        							param.getX(),
+        							param.getY(),
+        							param.getRes(param.getScale()),
+        							param.getScale(),
         							false,
         							1,
         							false,
