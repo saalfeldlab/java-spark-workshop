@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import mpicbg.imagefeatures.Feature;
+import mpicbg.imagefeatures.FloatArray2DSIFT;
 
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -23,7 +24,7 @@ public class LayerOrderAnalyzerTest {
 
     @Test
     public void tesGetZValues() throws Exception {
-        List<Double> zValues = LayerOrderAnalyzer.getZValues(
+        final List<Double> zValues = LayerOrderAnalyzer.getZValues(
                 "http://tem-services.int.janelia.org:8080/render-ws/v1/owner/flyTEM/project/FAFB00/stack/v8_montage");
 
         Assert.assertTrue("missing z values", zValues.size() > 10);
@@ -42,7 +43,14 @@ public class LayerOrderAnalyzerTest {
             zValues.add(z);
             final LayerFeatures layerFeatures = new LayerFeatures(z);
             layerFeatures.loadMontage("not-used", new File("src/test/resources/montage/" + z + ".png"), false);
-            layerFeatures.extractFeatures(LayerFeatures.DEFAULT_SIFT_PARAMETERS);
+            final FloatArray2DSIFT.Param localSiftParameters = LayerFeatures.DEFAULT_SIFT_PARAMETERS.clone();
+            final int w = layerFeatures.getWidth();
+            final int h = layerFeatures.getHeight();
+            final int minSize = w < h ? w : h;
+            final int maxSize = w > h ? w : h;
+            localSiftParameters.minOctaveSize = (int)(0.5 * minSize - 1.0);
+            localSiftParameters.maxOctaveSize = (int)(0.85 * maxSize + 1.0);
+            layerFeatures.extractFeatures(localSiftParameters);
             zToFeaturesMap.put(z, layerFeatures.getFeatureList());
         }
 

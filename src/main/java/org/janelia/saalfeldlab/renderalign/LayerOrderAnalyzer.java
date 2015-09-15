@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutionException;
 
 import mpicbg.imagefeatures.Feature;
 import mpicbg.imagefeatures.FloatArray2DSIFT;
+import net.imglib2.img.ImagePlusAdapter;
 
 import org.apache.log4j.Appender;
 import org.apache.log4j.ConsoleAppender;
@@ -43,7 +44,6 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.python.google.common.io.Files;
 
-import net.imglib2.img.ImagePlusAdapter;
 import scala.Tuple2;
 
 /**
@@ -90,13 +90,13 @@ public class LayerOrderAnalyzer {
                 usage = "SIFT feature descriptor size (how many samples per row and column).")
         private Integer fdSize = 4;
 
-        @Option(name = "-smin", aliases = {"--minOctaveSize"}, required = false,
-                usage = "SIFT minimum pixels for scale octaves (minOctaveSize < octave < maxOctaveSize).")
-        private Integer minOctaveSize = 800;
+        @Option(name = "-smin", aliases = {"--minSIFTScale"}, required = false,
+                usage = "SIFT minimum scale (minSize * minScale < size < maxSize * maxScale).")
+        private Double minScale = 0.5;
 
-        @Option(name = "-smax", aliases = {"--maxOctaveSize"}, required = false,
-                usage = "SIFT maximum pixels for scale octaves (minOctaveSize < octave < maxOctaveSize).")
-        private Integer maxOctaveSize = 3000;
+        @Option(name = "-smax", aliases = {"--maxSIFTScale"}, required = false,
+                usage = "SIFT maximum scale (minSize * minScale < size < maxSize * maxScale).")
+        private Double maxScale = 0.85;
 
         @Option(name = "-ss", aliases = {"--steps"}, required = false,
                 usage = "SIFT steps per scale octave.")
@@ -136,8 +136,8 @@ public class LayerOrderAnalyzer {
                    ", maxLayersPerMatrix=" + maxLayersPerMatrix +
                    ", force=" + force +
                    ", fdSize=" + fdSize +
-                   ", minOctaveSize=" + minOctaveSize +
-                   ", maxOctaveSize=" + maxOctaveSize +
+                   ", minSIFTScale=" + minScale +
+                   ", maxSIFTScale=" + maxScale +
                    ", steps=" + steps +
                    '}';
         }
@@ -150,7 +150,7 @@ public class LayerOrderAnalyzer {
             return new File(outputPath, "layer_images");
         }
 
-        public File getMontageFile(Double z) {
+        public File getMontageFile(final Double z) {
             return new File(getLayerImagesDir(), z + ".png");
         }
 
@@ -228,8 +228,6 @@ public class LayerOrderAnalyzer {
 
         final FloatArray2DSIFT.Param siftParameters = new FloatArray2DSIFT.Param();
         siftParameters.fdSize = options.fdSize;
-        siftParameters.minOctaveSize = options.minOctaveSize;
-        siftParameters.maxOctaveSize = options.maxOctaveSize;
         siftParameters.steps = options.steps;
 
         final JavaRDD<Double> rddZ = sc.parallelize(zValues);
@@ -242,6 +240,14 @@ public class LayerOrderAnalyzer {
                 final LayerFeatures layerFeatures = new LayerFeatures(z);
                 final String renderParametersUrlString = String.format(renderUrlFormat, z);
                 layerFeatures.loadMontage(renderParametersUrlString, options.getMontageFile(z), options.force);
+                final FloatArray2DSIFT.Param localSiftParameters = siftParameters.clone();
+                final int w = layerFeatures.getWidth();
+                final int h = layerFeatures.getHeight();
+                final int minSize = w < h ? w : h;
+                final int maxSize = w > h ? w : h;
+                localSiftParameters.minOctaveSize = (int)(options.minScale * minSize - 1.0);
+                localSiftParameters.maxOctaveSize = (int)(options.maxScale * maxSize + 1.0);
+
                 layerFeatures.extractFeatures(siftParameters);
                 return layerFeatures;
             }
@@ -331,7 +337,7 @@ public class LayerOrderAnalyzer {
                     }
                 });
 
-        List<LayerSimilarity> driverSimilarities = rddSimilarity.collect();
+        final List<LayerSimilarity> driverSimilarities = rddSimilarity.collect();
         logInfo("collected similarities for " + driverSimilarities.size() + " layer pairs");
 
         return driverSimilarities;
@@ -441,7 +447,7 @@ public class LayerOrderAnalyzer {
             TSP.generateResultFiles(ImagePlusAdapter.wrapFloat(matrixImagePlus),
                                     concordePath,
                                     similarityDir.getAbsolutePath());
-        } catch (Throwable t) {
+        } catch (final Throwable t) {
 
             logInfo("buildSimilarityMatrixAndGenerateResults: caught exception");
             t.printStackTrace();
