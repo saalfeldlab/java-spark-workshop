@@ -42,10 +42,6 @@ import org.kohsuke.args4j.Option;
 
 import scala.Tuple2;
 
-import com.google.gson.JsonIOException;
-import com.google.gson.JsonSyntaxException;
-import com.google.gson.reflect.TypeToken;
-
 /**
  * @author Stephan Saalfeld <saalfelds@janelia.hhmi.org>
  *
@@ -156,13 +152,11 @@ public class SimilarityRenderMontages {
 		System.out.println(baseUrlString);
 
 		final URL zValuesUrl = new URL(baseUrlString + "/zValues");
-		List<Double> zs =
-		        JsonUtils.GSON.fromJson(
-		                new InputStreamReader(zValuesUrl.openStream()),
-		                new TypeToken<ArrayList<Double>>(){}.getType());
+		final JsonUtils.Helper<Double> jsonHelper = new JsonUtils.Helper<>(Double.class);
+		List<Double> zs = jsonHelper.fromJsonArray(new InputStreamReader(zValuesUrl.openStream()));
 
 		System.out.println("Stack z-indices fetched (" + zs.size() + "):");
-		System.out.println(JsonUtils.GSON.toJson(zs));
+		System.out.println(zs);
 
 		/* recover after breaking jobs */
 		/* exclude successfully rendered images */
@@ -186,7 +180,7 @@ public class SimilarityRenderMontages {
 		zs = zsTBD;
 
 		System.out.println("Stack z-indices TBD (" + zs.size() + "):");
-		System.out.println(JsonUtils.GSON.toJson(zs));
+		System.out.println(zs);
 
 //		zs = Arrays.asList(new Double[]{
 //				2050.0,
@@ -430,7 +424,7 @@ public class SimilarityRenderMontages {
 
 
 
-	final static public void main2(final String... args) throws InterruptedException, ExecutionException, JsonIOException, JsonSyntaxException, IOException {
+	final static public void main2(final String... args) throws InterruptedException, ExecutionException, IOException {
 
 		final Options options = new Options(args);
 
@@ -440,10 +434,8 @@ public class SimilarityRenderMontages {
                 "/stack/" + options.getStackId();
 
         final URL zValuesUrl = new URL(baseUrlString + "/zValues");
-        final ArrayList<Double> zs =
-                JsonUtils.GSON.fromJson(
-                        new InputStreamReader(zValuesUrl.openStream()),
-                        new TypeToken<ArrayList<Double>>(){}.getType());
+		final JsonUtils.Helper<Double> jsonHelper = new JsonUtils.Helper<>(Double.class);
+		final List<Double> zs = jsonHelper.fromJsonArray(new InputStreamReader(zValuesUrl.openStream()));
 
 
         final String urlString =
