@@ -124,7 +124,7 @@ public class LayerFeatures implements Serializable {
                             "png",
                             true,
                             9);
-                } catch (Throwable t) {
+                } catch (final Throwable t) {
                     LOG.warn("loadMontage: failed to save " + montageFile.getAbsolutePath(), t);
                 }
             }
@@ -197,7 +197,7 @@ public class LayerFeatures implements Serializable {
                  ", elapsedTime=" + (timer.stop() / 1000) + "s");
     }
 
-    public static void main(String[] args) {
+    public static void main(final String[] args) {
 
         if (args.length != 4) {
             throw new IllegalArgumentException("USAGE: java " + LayerFeatures.class +
@@ -220,4 +220,12 @@ public class LayerFeatures implements Serializable {
     }
 
     private static final Logger LOG = LogManager.getLogger(LayerFeatures.class);
+
+    public int getWidth() {
+    	return montageImage.getWidth();
+    }
+
+    public int getHeight() {
+    	return montageImage.getHeight();
+    }
 }
