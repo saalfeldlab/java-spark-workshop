@@ -248,7 +248,7 @@ public class LayerOrderAnalyzer {
                 localSiftParameters.minOctaveSize = (int)(options.minScale * minSize - 1.0);
                 localSiftParameters.maxOctaveSize = (int)(options.maxScale * maxSize + 1.0);
 
-                layerFeatures.extractFeatures(siftParameters);
+                layerFeatures.extractFeatures(localSiftParameters);
                 return layerFeatures;
             }
         });
