@@ -9,6 +9,7 @@ import javax.annotation.Nonnull;
 
 import mpicbg.ij.FeatureTransform;
 import mpicbg.imagefeatures.Feature;
+import mpicbg.models.IllDefinedDataPointsException;
 import mpicbg.models.NotEnoughDataPointsException;
 import mpicbg.models.PointMatch;
 import mpicbg.trakem2.transform.AffineModel2D;
@@ -27,7 +28,7 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
     private Double z1;
     private Double z2;
     private Double inlierRatio;
-    private AffineModel2D model;
+    final private ArrayList<PointMatch> inliers = new ArrayList<>();
     private boolean modelFound;
 
     public LayerSimilarity(final Double z1,
@@ -49,7 +50,13 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
         return inlierRatio;
     }
 
-    public AffineModel2D getModel() {
+    public ArrayList<PointMatch> getInliers() {
+    	return inliers;
+    }
+
+    public AffineModel2D getModel() throws NotEnoughDataPointsException, IllDefinedDataPointsException {
+        final AffineModel2D model = new AffineModel2D();
+        model.fit(inliers);
         return model;
     }
 
@@ -59,12 +66,10 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
 
     @Override
     public String toString() {
-        final String dataString = (model == null) ? "" : getModel().toDataString();
-        return "{\"z1\": " + getZ1() +
+    	return "{\"z1\": " + getZ1() +
                ", \"z2\": " + getZ2() +
                ", \"inlierRatio\": " + getInlierRatio() +
-               ", \"modelFound\": " + isModelFound() +
-               ", \"dataString\": \"" + dataString + "\"}";
+               ", \"modelFound\": " + isModelFound() + "}";
     }
 
     @Override
@@ -84,7 +89,7 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
      * @throws IllegalArgumentException
      *   if features cannot be found for both layers.
      */
-    public void calculateInlierRatio(final Map<Double, List<Feature>> zToFeaturesMap)
+    public void calculateInlierRatio(final Map<Double, LayerFeatures> zToFeaturesMap)
             throws IllegalArgumentException {
 
         LOG.info("calculateInlierRatio: entry");
@@ -94,7 +99,7 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
         final float minInlierRatio = 0.0f;
         final int minNumInliers = 20;
 
-        model = new AffineModel2D();
+        final AffineModel2D model = new AffineModel2D();
 
         final List<Feature> features1 = getFeatureList(z1, zToFeaturesMap);
         final List<Feature> features2 = getFeatureList(z2, zToFeaturesMap);
@@ -105,7 +110,7 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
         timer.start();
 
         final ArrayList<PointMatch> candidates = new ArrayList<>();
-        final ArrayList<PointMatch> inliers = new ArrayList<>();
+        inliers.clear();
 
         FeatureTransform.matchFeatures(features1, features2, candidates, rod);
 
@@ -130,11 +135,11 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
                  ", elapsedTime=" + (timer.stop() / 1000) + "s");
     }
 
-    private List<Feature> getFeatureList(Double z,
-                                         Map<Double, List<Feature>> zToFeaturesMap)
+    private List<Feature> getFeatureList(final Double z,
+                                         final Map<Double, LayerFeatures> zToFeaturesMap)
             throws IllegalArgumentException {
 
-        final List<Feature> featureList = zToFeaturesMap.get(z);
+        final List<Feature> featureList = zToFeaturesMap.get(z).getFeatureList();
 
         if (featureList == null) {
             throw new IllegalArgumentException("feature list for " + z + " is missing");

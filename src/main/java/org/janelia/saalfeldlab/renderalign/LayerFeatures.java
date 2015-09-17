@@ -3,6 +3,7 @@ package org.janelia.saalfeldlab.renderalign;
 import ij.ImagePlus;
 import ij.process.ByteProcessor;
 
+import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.Serializable;
@@ -25,6 +26,8 @@ import org.janelia.alignment.util.ImageProcessorCache;
 /**
  * Collection of features extracted from a layer montage.
  *
+ * TODO the bounding box is not generated if an existing image was re-used
+ *
  * @author Stephan Saalfeld <saalfelds@janelia.hhmi.org>
  */
 public class LayerFeatures implements Serializable {
@@ -40,6 +43,7 @@ public class LayerFeatures implements Serializable {
     private Double z;
     private List<Feature> featureList;
     private String processingMessages;
+    private Rectangle2D.Double bounds = null;
 
     private transient BufferedImage montageImage;
 
@@ -56,6 +60,10 @@ public class LayerFeatures implements Serializable {
 
     public List<Feature> getFeatureList() {
         return featureList;
+    }
+
+    public Rectangle2D.Double getBounds() {
+    	return bounds;
     }
 
     public String getProcessingMessages() {
@@ -83,6 +91,7 @@ public class LayerFeatures implements Serializable {
         return map.put(z, featureList);
     }
 
+
     /**
      * Loads the layer's montage image either from disk or by rendering it.
      *
@@ -92,6 +101,8 @@ public class LayerFeatures implements Serializable {
      *
      * @param  force                      if true, montage will be re-rendered even if a
      *                                    cached version already exists on disk.
+     *
+     * TODO re-using existing image means that we do not have bounds!!!  Fix!
      */
     public void loadMontage(final String renderParametersUrlString,
                             final File montageFile,
@@ -107,6 +118,12 @@ public class LayerFeatures implements Serializable {
             final RenderParameters renderParameters = RenderParameters.loadFromUrl(renderParametersUrlString);
 
             LOG.info("loadMontage: retrieved " + renderParametersUrlString);
+
+            bounds = new Rectangle2D.Double(
+            		renderParameters.getX(),
+            		renderParameters.getY(),
+            		renderParameters.getWidth(),
+            		renderParameters.getHeight());
 
             montageImage = renderParameters.openTargetImage();
             final ByteProcessor ip = new ByteProcessor(montageImage.getWidth(), montageImage.getHeight());

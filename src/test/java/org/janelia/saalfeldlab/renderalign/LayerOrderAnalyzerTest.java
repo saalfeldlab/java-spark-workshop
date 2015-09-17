@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import mpicbg.imagefeatures.Feature;
 import mpicbg.imagefeatures.FloatArray2DSIFT;
 
 import org.junit.Assert;
@@ -36,7 +35,7 @@ public class LayerOrderAnalyzerTest {
         final int n = 5;
 
         final List<Double> zValues = new ArrayList<>();
-        final Map<Double, List<Feature>> zToFeaturesMap = new HashMap<>();
+        final Map<Double, LayerFeatures> zToFeaturesMap = new HashMap<>();
 
         for (int i = 0; i < n; i++) {
             final Double z = i + 2050.0;
@@ -51,7 +50,7 @@ public class LayerOrderAnalyzerTest {
             localSiftParameters.minOctaveSize = (int)(0.5 * minSize - 1.0);
             localSiftParameters.maxOctaveSize = (int)(0.85 * maxSize + 1.0);
             layerFeatures.extractFeatures(localSiftParameters);
-            zToFeaturesMap.put(z, layerFeatures.getFeatureList());
+            zToFeaturesMap.put(z, layerFeatures);
         }
 
         for (int i = 0; i < n; i++) {
