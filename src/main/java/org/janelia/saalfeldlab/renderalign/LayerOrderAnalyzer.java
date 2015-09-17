@@ -185,8 +185,8 @@ public class LayerOrderAnalyzer {
 
         final String baseUrlString = options.getBaseUrl();
 
-//        final List<Double> zValues = getZValues(baseUrlString).subList(0, 400);
-        final List<Double> zValues = getZValues(baseUrlString);
+        final List<Double> zValues = getZValues(baseUrlString).subList(0, 2000);
+//        final List<Double> zValues = getZValues(baseUrlString);
 
         final SparkConf conf = new SparkConf().setAppName("LayerOrderAnalyzer");
 
@@ -362,16 +362,11 @@ public class LayerOrderAnalyzer {
                 setupExecutorLog4j("z:" + z);
                 final LayerFeatures layerFeatures = new LayerFeatures(z);
                 final String renderParametersUrlString = String.format(renderUrlFormat, z);
-                layerFeatures.loadMontage(renderParametersUrlString, options.getMontageFile(z), options.force);
-                final FloatArray2DSIFT.Param localSiftParameters = siftParameters.clone();
-                final int w = layerFeatures.getWidth();
-                final int h = layerFeatures.getHeight();
-                final int minSize = w < h ? w : h;
-                final int maxSize = w > h ? w : h;
-                localSiftParameters.minOctaveSize = (int)(options.minScale * minSize - 1.0);
-                localSiftParameters.maxOctaveSize = (int)Math.round(options.maxScale * maxSize);
-
-                layerFeatures.extractFeatures(localSiftParameters);
+                layerFeatures.extractFeatures(
+                        layerFeatures.loadMontage(renderParametersUrlString, options.getMontageFile(z), options.force),
+                        siftParameters,
+                        options.minScale,
+                        options.maxScale);
                 return layerFeatures;
             }
         });

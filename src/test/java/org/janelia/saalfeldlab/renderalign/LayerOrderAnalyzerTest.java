@@ -6,8 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import mpicbg.imagefeatures.FloatArray2DSIFT;
-
 import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -41,15 +39,11 @@ public class LayerOrderAnalyzerTest {
             final Double z = i + 2050.0;
             zValues.add(z);
             final LayerFeatures layerFeatures = new LayerFeatures(z);
-            layerFeatures.loadMontage("not-used", new File("src/test/resources/montage/" + z + ".png"), false);
-            final FloatArray2DSIFT.Param localSiftParameters = LayerFeatures.DEFAULT_SIFT_PARAMETERS.clone();
-            final int w = layerFeatures.getWidth();
-            final int h = layerFeatures.getHeight();
-            final int minSize = w < h ? w : h;
-            final int maxSize = w > h ? w : h;
-            localSiftParameters.minOctaveSize = (int)(0.5 * minSize - 1.0);
-            localSiftParameters.maxOctaveSize = (int)(0.85 * maxSize + 1.0);
-            layerFeatures.extractFeatures(localSiftParameters);
+            layerFeatures.extractFeatures(
+                    layerFeatures.loadMontage("not-used", new File("src/test/resources/montage/" + z + ".png"), false),
+                    LayerFeatures.DEFAULT_SIFT_PARAMETERS,
+                    0.5,
+                    1.0);
             zToFeaturesMap.put(z, layerFeatures);
         }
 
