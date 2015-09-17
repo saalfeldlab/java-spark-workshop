@@ -16,7 +16,6 @@ import java.io.Serializable;
 import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -36,7 +35,6 @@ import mpicbg.models.PointMatch;
 import mpicbg.models.Tile;
 import mpicbg.models.TileConfiguration;
 import mpicbg.trakem2.transform.AffineModel2D;
-import net.imglib2.img.ImagePlusAdapter;
 
 import org.apache.log4j.Appender;
 import org.apache.log4j.ConsoleAppender;
@@ -64,6 +62,7 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.python.google.common.io.Files;
 
+import net.imglib2.img.ImagePlusAdapter;
 import scala.Tuple2;
 
 /**
@@ -97,10 +96,6 @@ public class LayerOrderAnalyzer {
         @Option(name = "-r", aliases = {"--range"}, required = false,
                 usage = "Range (maximum distance) for similarity comparisions.")
         private Integer range = 48;
-
-        @Option(name = "-l", aliases = {"--maxLayersPerMatrix"}, required = false,
-                usage = "Maximum number of layers to include in a similarity matrix.")
-        private Integer maxLayersPerMatrix = 8000;
 
         @Option(name = "-f", aliases = {"--force"}, required = false,
                 usage = "Regenerate montage image even if it exists.")
@@ -153,7 +148,6 @@ public class LayerOrderAnalyzer {
                    ", scale=" + scale +
                    ", outputPath='" + outputPath + '\'' +
                    ", range=" + range +
-                   ", maxLayersPerMatrix=" + maxLayersPerMatrix +
                    ", force=" + force +
                    ", fdSize=" + fdSize +
                    ", minSIFTScale=" + minScale +
@@ -227,10 +221,11 @@ public class LayerOrderAnalyzer {
         /* make tiles */
         final HashMap<Double, Tile<?>> zTiles = new HashMap<>();
         for (final Double z : zValues)
+            //noinspection unchecked
             zTiles.put(
                     z,
                     new Tile(
-                            new InterpolatedAffineModel2D<mpicbg.models.AffineModel2D, mpicbg.models.RigidModel2D>(
+                            new InterpolatedAffineModel2D<>(
                                     new mpicbg.models.AffineModel2D(),
                                     new mpicbg.models.RigidModel2D(),
                                     1.0)));
@@ -244,6 +239,7 @@ public class LayerOrderAnalyzer {
 
                 final Tile t1 = zTiles.get(sim.getZ1());
                 final Tile t2 = zTiles.get(sim.getZ2());
+                //noinspection unchecked
                 t1.connect(t2, sim.getInliers());
             }
         }
@@ -314,7 +310,6 @@ public class LayerOrderAnalyzer {
 
         final int transformedImages = renderTransformedMontages(
                 sc,
-                options,
                 zValuesWithFeatures,
                 zTransforms,
                 union,
@@ -326,12 +321,11 @@ public class LayerOrderAnalyzer {
 
         sc.stop();
 
-        buildSimilarityMatricesAndGenerateResults(zValues,
-                                                  zValuesWithoutFeatures,
-                                                  similarities,
-                                                  options.outputPath,
-                                                  options.maxLayersPerMatrix,
-                                                  options.concordePath);
+        buildSimilarityMatrixAndGenerateResults(zValues,
+                                                zValuesWithoutFeatures,
+                                                similarities,
+                                                options.outputPath,
+                                                options.concordePath);
 
         logInfo("*************** Job done! ***************");
     }
@@ -467,78 +461,6 @@ public class LayerOrderAnalyzer {
         return driverSimilarities;
     }
 
-    private static void buildSimilarityMatricesAndGenerateResults(final List<Double> zValues,
-                                                                  final Set<Double> zValuesWithoutFeatures,
-                                                                  final List<LayerSimilarity> similarities,
-                                                                  final String outputPath,
-                                                                  final int maxLayersPerMatrix,
-                                                                  final String concordePath)
-            throws IOException, InterruptedException {
-
-        Collections.sort(zValues);
-        Collections.sort(similarities);
-
-        if (maxLayersPerMatrix < zValues.size()) {
-
-            final List<LayerSimilarity> filteredSimilarityList = new ArrayList<>(similarities.size());
-
-            final double zValueDelta = 0.0001;
-            final int overlap = maxLayersPerMatrix / 2;
-
-            int maxZIndex;
-            double minimumZ;
-            double maximumZ;
-            double z1;
-            for (int zIndex = 0; zIndex < zValues.size(); zIndex = zIndex + overlap) {
-
-                maxZIndex = zIndex + maxLayersPerMatrix;
-                if (maxZIndex > zValues.size()) {
-                    maxZIndex = zValues.size();
-                }
-
-                minimumZ = zValues.get(zIndex) - zValueDelta;
-                maximumZ = zValues.get(maxZIndex - 1) + zValueDelta;
-
-                for (final LayerSimilarity similarity : similarities) {
-                    z1 = similarity.getZ1();
-                    if (z1 > minimumZ) {
-                        if (z1 < maximumZ) {
-                            if (similarity.getZ2() < maximumZ) {
-                                filteredSimilarityList.add(similarity);
-                            } // else skip
-                        } else {
-                            break;
-                        }
-                    } // else skip
-                }
-
-                buildSimilarityMatrixAndGenerateResults(zValues.subList(zIndex, maxZIndex),
-                                                        zValuesWithoutFeatures,
-                                                        filteredSimilarityList,
-                                                        outputPath,
-                                                        concordePath);
-
-                if ((zIndex + overlap) < zValues.size()) {
-                    filteredSimilarityList.clear();
-                } else {
-                    break;
-                }
-
-            }
-
-        } else {
-
-            buildSimilarityMatrixAndGenerateResults(zValues,
-                                                    zValuesWithoutFeatures,
-                                                    similarities,
-                                                    outputPath,
-                                                    concordePath);
-
-        }
-
-
-    }
-
     private static void buildSimilarityMatrixAndGenerateResults(final List<Double> zValues,
                                                                 final Set<Double> zValuesWithoutFeatures,
                                                                 final List<LayerSimilarity> similarityList,
@@ -624,7 +546,6 @@ public class LayerOrderAnalyzer {
 
     private static int renderTransformedMontages(
             final JavaSparkContext sc,
-            final Options options,
             final List<Double> zValues,
             final Map<Double, AffineTransform> transforms,
             final Rectangle2D.Double bounds,
@@ -669,10 +590,10 @@ public class LayerOrderAnalyzer {
                     t.printStackTrace();
                 }
 
-                return new Boolean(success);
+                return success;
             }
         });
-        return rddFeatures.aggregate(new Integer(0), new Function2<Integer, Boolean, Integer>() {
+        return rddFeatures.aggregate(0, new Function2<Integer, Boolean, Integer>() {
             @Override
             public Integer call(Integer arg0, final Boolean arg1) throws Exception {
                 if (arg1)
