@@ -8,8 +8,10 @@ import java.awt.geom.AffineTransform;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.io.Serializable;
 import java.net.URL;
 import java.text.SimpleDateFormat;
@@ -217,6 +219,8 @@ public class LayerOrderAnalyzer {
         final List<LayerSimilarity> similarities = calculateSimilarities(sc,
                                                                          zToFeaturesMap,
                                                                          layerPairs);
+
+        exportMatchesForKhaled(similarities, zValues, options.outputPath, options.outputPath + "layer_montages/");
 
         /* align the thing */
 
@@ -682,6 +686,38 @@ public class LayerOrderAnalyzer {
                 return arg0 + arg1;
             }
         });
+    }
+
+
+    private static void exportMatchesForKhaled(
+            final Iterable<LayerSimilarity> similarities,
+            final Iterable<Double> zValues,
+            final String khaledExportPath,
+            final String montageExportPath) {
+        try (final FileOutputStream fos = new FileOutputStream(khaledExportPath + "khaled-matches.txt");
+                final OutputStreamWriter out = new OutputStreamWriter(fos, "UTF-8");
+                final FileOutputStream fos2 = new FileOutputStream(khaledExportPath + "khaled-ids.txt");
+                final OutputStreamWriter out2 = new OutputStreamWriter(fos, "UTF-8");) {
+            for (final LayerSimilarity ls : similarities) {
+                final long id1 = Double.doubleToLongBits(ls.getZ1());
+                final long id2 = Double.doubleToLongBits(ls.getZ2());
+                if (ls.isModelFound() == true) {
+                    for (final PointMatch p : ls.getInliers()) {
+                        final double[] p1 = p.getP1().getL();
+                        final double[] p2 = p.getP2().getL();
+                        out.write(id1 + "\t" + p1[0] + "\t" + p1[1] + "\t" + id2 + "\t" + p2[0] + "\t" + p2[1] + "\n");
+                    }
+                }
+            }
+            out.close();
+            for (final Double z : zValues) {
+                final long id = Double.doubleToLongBits(z);
+                out2.write(id + "\t" + montageExportPath + z + ".png");
+            }
+            out2.close();
+        } catch (final IOException e) {
+            e.printStackTrace();
+        }
     }
 
 
