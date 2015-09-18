@@ -207,7 +207,7 @@ public class LayerOrderAnalyzer {
 
         final String baseUrlString = options.getBaseUrl();
 
-        final List<Double> zValues = getZValues(baseUrlString).subList(0, 2000); //TODO: remove this!
+        final List<Double> zValues = getZValues(baseUrlString);
 //        final List<Double> zValues = getZValues(baseUrlString);
 
         final SparkConf conf = new SparkConf().setAppName("LayerOrderAnalyzer");
