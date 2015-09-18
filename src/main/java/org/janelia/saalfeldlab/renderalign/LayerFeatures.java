@@ -158,7 +158,7 @@ public class LayerFeatures implements Serializable {
             LOG.info("loadMontage: loaded " + montageFile.getAbsolutePath());
             final String boundsUrlString = renderParametersUrlString.replace("render-parameters", "bounds");
 
-            bounds = loadBounds(renderParametersUrlString);
+            bounds = loadBounds(boundsUrlString);
         }
 
         LOG.info("loadMontage: exit, z=" + z + ", elapsedTime=" + (timer.stop() / 1000) + "s");
