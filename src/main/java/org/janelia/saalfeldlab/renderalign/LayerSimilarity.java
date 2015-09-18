@@ -9,7 +9,6 @@ import javax.annotation.Nonnull;
 
 import mpicbg.ij.FeatureTransform;
 import mpicbg.imagefeatures.Feature;
-import mpicbg.models.IllDefinedDataPointsException;
 import mpicbg.models.NotEnoughDataPointsException;
 import mpicbg.models.PointMatch;
 import mpicbg.trakem2.transform.AffineModel2D;
@@ -52,12 +51,6 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
 
     public ArrayList<PointMatch> getInliers() {
     	return inliers;
-    }
-
-    public AffineModel2D getModel() throws NotEnoughDataPointsException, IllDefinedDataPointsException {
-        final AffineModel2D model = new AffineModel2D();
-        model.fit(inliers);
-        return model;
     }
 
     public boolean isModelFound() {
@@ -139,7 +132,9 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
                                          final Map<Double, LayerFeatures> zToFeaturesMap)
             throws IllegalArgumentException {
 
-        final List<Feature> featureList = zToFeaturesMap.get(z).getFeatureList();
+        final LayerFeatures layerFeatures = zToFeaturesMap.get(z);
+
+        final List<Feature> featureList = layerFeatures.getPersistedFeatureList();
 
         if (featureList == null) {
             throw new IllegalArgumentException("feature list for " + z + " is missing");

@@ -97,9 +97,13 @@ public class LayerOrderAnalyzer {
                 usage = "Range (maximum distance) for similarity comparisions.")
         private Integer range = 48;
 
-        @Option(name = "-f", aliases = {"--force"}, required = false,
+        @Option(name = "-f", aliases = {"--forceMontageRendering"}, required = false,
                 usage = "Regenerate montage image even if it exists.")
-        private Boolean force = false;
+        private Boolean forceMontageRendering = false;
+
+        @Option(name = "-F", aliases = {"--forceFeatureExtraction"}, required = false,
+                usage = "Extract features even if they were already extracted.")
+        private Boolean forceFeatureExtraction = false;
 
         @Option(name = "-d", aliases = {"--fdSize"}, required = false,
                 usage = "SIFT feature descriptor size (how many samples per row and column).")
@@ -124,11 +128,7 @@ public class LayerOrderAnalyzer {
             final CmdLineParser parser = new CmdLineParser(this);
             try {
                 parser.parseArgument(args);
-
-                final File layerImagesDir = getLayerImagesDir();
-                if (!layerImagesDir.exists()) {
-                    throw new IllegalArgumentException(layerImagesDir.getAbsolutePath() + " does not exist");
-                }
+                makeDataDirectories();
             } catch (final Throwable t) {
                 parser.printUsage(System.err);
                 throw new RuntimeException(t);
@@ -148,7 +148,8 @@ public class LayerOrderAnalyzer {
                    ", scale=" + scale +
                    ", outputPath='" + outputPath + '\'' +
                    ", range=" + range +
-                   ", force=" + force +
+                   ", forceMontageRendering=" + forceMontageRendering +
+                   ", forceFeatureExtraction=" + forceFeatureExtraction +
                    ", fdSize=" + fdSize +
                    ", minSIFTScale=" + minScale +
                    ", maxSIFTScale=" + maxScale +
@@ -168,6 +169,31 @@ public class LayerOrderAnalyzer {
             return new File(getLayerImagesDir(), z + ".png");
         }
 
+        public File getFeatureListDir() {
+            return new File(outputPath, "feature_lists");
+        }
+
+        public File getFeatureListFile(final Double z) {
+            return new File(getFeatureListDir(), z + "_features.ser");
+        }
+
+        public File getAlignDir() {
+            return new File(outputPath, "align");
+        }
+
+        public void makeDataDirectories() throws IllegalArgumentException {
+            final File[] dataDirectories = new File[] {
+                    getLayerImagesDir(),
+                    getFeatureListDir(),
+                    getAlignDir()};
+            for (File dataDir : dataDirectories) {
+                if (! dataDir.exists()) {
+                    if (! dataDir.mkdir()) {
+                        throw new IllegalArgumentException("failed to create " + dataDir.getAbsolutePath());
+                    }
+                }
+            }
+        }
     }
 
     public static void main(final String... args)
@@ -181,7 +207,7 @@ public class LayerOrderAnalyzer {
 
         final String baseUrlString = options.getBaseUrl();
 
-        final List<Double> zValues = getZValues(baseUrlString).subList(0, 2000);
+        final List<Double> zValues = getZValues(baseUrlString).subList(0, 2000); //TODO: remove this!
 //        final List<Double> zValues = getZValues(baseUrlString);
 
         final SparkConf conf = new SparkConf().setAppName("LayerOrderAnalyzer");
@@ -195,10 +221,12 @@ public class LayerOrderAnalyzer {
         final String renderUrlFormat = baseUrlString + "/z/%f/render-parameters" +
                                        "?scale=" + options.scale + "&filter=true";
 
+        final String boundsUrlFormat = baseUrlString + "/z/%f/bounds";
         final Map<Double, LayerFeatures> zToFeaturesMap = calculateFeatures(sc,
                                                                             options,
                                                                             zValues,
-                                                                            renderUrlFormat);
+                                                                            renderUrlFormat,
+                                                                            boundsUrlFormat);
 
         final Tuple2<List<Double>, Set<Double>> filteredZValues =
                 filterOutLayersWithNoFeatures(
@@ -213,10 +241,272 @@ public class LayerOrderAnalyzer {
         final List<LayerSimilarity> similarities = calculateSimilarities(sc,
                                                                          zToFeaturesMap,
                                                                          layerPairs);
-
+        
         exportMatchesForKhaled(similarities, zValues, options.outputPath, options.outputPath + "layer_images/");
+        
+        alignTiles(options,
+                   zValues,
+                   sc,
+                   renderUrlFormat,
+                   zToFeaturesMap,
+                   zValuesWithFeatures,
+                   similarities);
 
         /* align the thing */
+
+        /* make tiles */
+        final HashMap<Double, Tile<?>> zTiles = new HashMap<>();
+        for (final Double z : zValues)
+            //noinspection unchecked
+            zTiles.put(
+                    z,
+                    new Tile(
+                            new InterpolatedAffineModel2D<>(
+                                    new mpicbg.models.AffineModel2D(),
+                                    new mpicbg.models.RigidModel2D(),
+                                    1.0)));
+
+        for (final LayerSimilarity sim : similarities) {
+            if (sim.isModelFound()) {
+                final double weight = sim.getInlierRatio();
+                for (final PointMatch match : sim.getInliers()) {
+                    match.setWeights(new double[]{weight});
+                }
+
+                final Tile t1 = zTiles.get(sim.getZ1());
+                final Tile t2 = zTiles.get(sim.getZ2());
+                //noinspection unchecked
+                t1.connect(t2, sim.getInliers());
+            }
+        }
+
+        /* feed all tiles that have connections into tile configuration, report those that are disconnected */
+        final TileConfiguration tc = new TileConfiguration();
+        for (final Entry<Double, Tile<?>> entry : zTiles.entrySet()) {
+            final Tile<?> t = entry.getValue();
+            if (!t.getConnectedTiles().isEmpty())
+                tc.addTile(entry.getValue());
+            else
+                logInfo(entry.getKey() + " is disconnected.");
+        }
+
+        /* three pass optimization, first using the regularizer exclusively ... */
+        try {
+            tc.optimize(0.01, 5000, 200, 0.9);
+        } catch (NotEnoughDataPointsException | IllDefinedDataPointsException e) {
+            e.printStackTrace();
+        }
+        /* ... then using the desired model with low regularization ... */
+        for (final Tile<?> t : zTiles.values()) {
+            ((InterpolatedAffineModel2D<?, ?>)t.getModel()).setLambda(0.1);
+        }
+        try {
+            tc.optimize(0.01, 5000, 200, 0.9);
+        } catch (NotEnoughDataPointsException | IllDefinedDataPointsException e) {
+            e.printStackTrace();
+        }
+        /* ... then using the desired model with very low regularization.*/
+        for (final Tile<?> t : zTiles.values()) {
+            ((InterpolatedAffineModel2D<?, ?>)t.getModel()).setLambda(0.01);
+        }
+        try {
+            tc.optimize(0.01, 5000, 200, 0.9);
+        } catch (NotEnoughDataPointsException | IllDefinedDataPointsException e) {
+            e.printStackTrace();
+        }
+
+        logInfo("Aligned.");
+
+        final HashMap<Double, AffineTransform> zTransforms = new HashMap<>();
+
+        final Rectangle2D.Double union = new Rectangle2D.Double();
+        /* convert affine transforms from scaled to world space */
+        /* I believe the global transform A is S^-1A'ST^-1, but I am tired */
+        for (final Entry<Double, Tile<?>> entry : zTiles.entrySet()) {
+            final Double z = entry.getKey();
+            final Tile<?> t = entry.getValue();
+            final LayerFeatures lf = zToFeaturesMap.get(z);
+            final Rectangle2D.Double bounds = lf.getBounds();
+            final AffineTransform affine = new AffineTransform();
+            affine.scale(1.0 / options.scale, 1.0 / options.scale);
+            affine.concatenate(((Affine2D)t.getModel()).createAffine());
+            affine.scale(options.scale, options.scale);
+            affine.translate(-bounds.x, -bounds.y);
+            zTransforms.put(entry.getKey(), affine);
+            union.add(affine.createTransformedShape(bounds).getBounds2D());
+        }
+
+        logInfo("Bounding box of aligned series is " + union.toString() + ".");
+
+        logInfo("Affines:");
+        for(final Entry<Double, AffineTransform> entry : zTransforms.entrySet()) {
+            logInfo(entry.getKey() + " : " + entry.getValue());
+        }
+
+        final int transformedImages = renderTransformedMontages(
+                sc,
+                zValuesWithFeatures,
+                zTransforms,
+                union,
+                renderUrlFormat,
+                options.outputPath + "aligned/");
+
+        logInfo("Rendered " + transformedImages + " images");
+
+
+        sc.stop();
+
+        buildSimilarityMatrixAndGenerateResults(zValues,
+                                                zValuesWithoutFeatures,
+                                                similarities,
+                                                options.outputPath,
+                                                options.concordePath);
+
+        logInfo("*************** Job done! ***************");
+    }
+
+    public static List<Double> getZValues(final String baseUrlString)
+            throws IOException {
+
+        final URL zValuesUrl = new URL(baseUrlString + "/zValues");
+
+        final JsonUtils.Helper<Double> jsonHelper = new JsonUtils.Helper<>(Double.class);
+        final List<Double> zValues = jsonHelper.fromJsonArray(new InputStreamReader(zValuesUrl.openStream()));
+
+        logInfo("retrieved " + zValues.size() + " values from " + zValuesUrl);
+
+        return zValues;
+    }
+
+    private static Map<Double, LayerFeatures> calculateFeatures(final JavaSparkContext sc,
+                                                                final Options options,
+                                                                final List<Double> zValues,
+                                                                final String renderUrlFormat,
+                                                                final String boundsUrlFormat) {
+
+        final FloatArray2DSIFT.Param siftParameters = new FloatArray2DSIFT.Param();
+        siftParameters.fdSize = options.fdSize;
+        siftParameters.steps = options.steps;
+
+        final JavaRDD<Double> rddZ = sc.parallelize(zValues);
+
+        final JavaRDD<LayerFeatures> rddFeatures = rddZ.map(new Function<Double, LayerFeatures>() {
+            @Override
+            public LayerFeatures call(final Double z)
+                    throws Exception {
+                setupExecutorLog4j("z:" + z);
+                final LayerFeatures layerFeatures = new LayerFeatures(z,
+                                                                      String.format(renderUrlFormat, z),
+                                                                      String.format(boundsUrlFormat, z),
+                                                                      options.getMontageFile(z),
+                                                                      options.getFeatureListFile(z));
+                layerFeatures.loadMontageAndExtractFeatures(options.forceMontageRendering,
+                                                            siftParameters,
+                                                            options.minScale,
+                                                            options.maxScale,
+                                                            options.forceFeatureExtraction);
+                return layerFeatures;
+            }
+        });
+
+        final List<LayerFeatures> driverFeatures = rddFeatures.collect();
+        logInfo("collected feature lists for " + driverFeatures.size() + " layers");
+
+        long totalFeatureCount = 0;
+
+        final Map<Double, LayerFeatures> driverZtoFeaturesMap = new HashMap<>(driverFeatures.size() * 2);
+        for (final LayerFeatures layerFeatures : driverFeatures) {
+            if (layerFeatures.getFeatureCount() > 20) {
+                driverZtoFeaturesMap.put(layerFeatures.getZ(), layerFeatures);
+                totalFeatureCount += layerFeatures.getFeatureCount();
+            } else {
+                System.out.println("WARNING: excluding layer " + layerFeatures.getZ() +
+                                   " because " + layerFeatures.getFeatureCount() + " features were found for it, " +
+                                   layerFeatures.getProcessingMessages());
+            }
+        }
+
+        logInfo("total feature count is " + totalFeatureCount);
+
+        return driverZtoFeaturesMap;
+    }
+
+    private static Tuple2<List<Double>, Set<Double>> filterOutLayersWithNoFeatures(
+            final List<Double> zValues,
+            final Map<Double, LayerFeatures> zToFeaturesMap) {
+        final List<Double> zValuesWithFeatures;
+        final Set<Double> zValuesWithoutFeatures;
+
+        if (zValues.size() == zToFeaturesMap.size()) {
+            zValuesWithFeatures = zValues;
+            zValuesWithoutFeatures = new HashSet<>();
+        } else {
+            zValuesWithFeatures = new ArrayList<>(zValues.size());
+            zValuesWithoutFeatures = new HashSet<>();
+            for (final Double z : zValues) {
+                if (zToFeaturesMap.containsKey(z)) {
+                    zValuesWithFeatures.add(z);
+                } else {
+                    zValuesWithoutFeatures.add(z);
+                }
+            }
+        }
+
+        return new Tuple2<>(zValuesWithFeatures, zValuesWithoutFeatures);
+    }
+
+    private static List<Tuple2<Double, Double>> calculateLayerPairs(final List<Double> zValues,
+                                                                    final int range) {
+        final int n = zValues.size();
+        final List<Tuple2<Double, Double>> layerPairs = new ArrayList<>(n * range);
+        for (int i = 0; i < n; i++) {
+            for (int k = i + 1; k < n && k < i + range; k++) {
+                layerPairs.add(new Tuple2<>(zValues.get(i), zValues.get(k)));
+            }
+        }
+
+        logInfo("derived " + layerPairs.size() + " layer pairs");
+
+        return layerPairs;
+    }
+
+    private static List<LayerSimilarity> calculateSimilarities(final JavaSparkContext sc,
+                                                               final Map<Double, LayerFeatures> zToFeaturesMap,
+                                                               final List<Tuple2<Double, Double>> zPairs) {
+
+        // broadcast feature map to all nodes for use in similarity calculation
+        final Broadcast<Map<Double, LayerFeatures>> broadcastZToFeaturesMap = sc.broadcast(zToFeaturesMap);
+
+        final JavaRDD<Tuple2<Double, Double>> rddZPairs = sc.parallelize(zPairs);
+
+        final JavaRDD<LayerSimilarity> rddSimilarity = rddZPairs.map(
+                new Function<Tuple2<Double, Double>, LayerSimilarity>() {
+
+                    @Override
+                    public LayerSimilarity call(final Tuple2<Double, Double> tuple2)
+                            throws Exception {
+                        final Double z1 = tuple2._1();
+                        final Double z2 = tuple2._2();
+                        setupExecutorLog4j("z1:" + z1 + ",z2:" + z2);
+                        final LayerSimilarity layerSimilarity = new LayerSimilarity(z1, z2);
+                        layerSimilarity.calculateInlierRatio(broadcastZToFeaturesMap.getValue());
+                        return layerSimilarity;
+                    }
+                });
+
+        final List<LayerSimilarity> driverSimilarities = rddSimilarity.collect();
+        logInfo("collected similarities for " + driverSimilarities.size() + " layer pairs");
+
+        return driverSimilarities;
+    }
+
+    private static void alignTiles(final Options options,
+                                   final List<Double> zValues,
+                                   final JavaSparkContext sc,
+                                   final String renderUrlFormat,
+                                   final Map<Double, LayerFeatures> zToFeaturesMap,
+                                   final List<Double> zValuesWithFeatures,
+                                   final List<LayerSimilarity> similarities) {
 
         /* make tiles */
         final HashMap<Double, Tile<?>> zTiles = new HashMap<>();
@@ -314,151 +604,9 @@ public class LayerOrderAnalyzer {
                 zTransforms,
                 union,
                 renderUrlFormat,
-                options.outputPath + "aligned/");
+                options.getAlignDir());
 
         logInfo("Rendered " + transformedImages + " images");
-
-
-        sc.stop();
-
-        buildSimilarityMatrixAndGenerateResults(zValues,
-                                                zValuesWithoutFeatures,
-                                                similarities,
-                                                options.outputPath,
-                                                options.concordePath);
-
-        logInfo("*************** Job done! ***************");
-    }
-
-    public static List<Double> getZValues(final String baseUrlString)
-            throws IOException {
-
-        final URL zValuesUrl = new URL(baseUrlString + "/zValues");
-
-        final JsonUtils.Helper<Double> jsonHelper = new JsonUtils.Helper<>(Double.class);
-        final List<Double> zValues = jsonHelper.fromJsonArray(new InputStreamReader(zValuesUrl.openStream()));
-
-        logInfo("retrieved " + zValues.size() + " values from " + zValuesUrl);
-
-        return zValues;
-    }
-
-    private static Map<Double, LayerFeatures> calculateFeatures(final JavaSparkContext sc,
-                                                                final Options options,
-                                                                final List<Double> zValues,
-                                                                final String renderUrlFormat) {
-
-        final FloatArray2DSIFT.Param siftParameters = new FloatArray2DSIFT.Param();
-        siftParameters.fdSize = options.fdSize;
-        siftParameters.steps = options.steps;
-
-        final JavaRDD<Double> rddZ = sc.parallelize(zValues);
-
-        final JavaRDD<LayerFeatures> rddFeatures = rddZ.map(new Function<Double, LayerFeatures>() {
-            @Override
-            public LayerFeatures call(final Double z)
-                    throws Exception {
-                setupExecutorLog4j("z:" + z);
-                final LayerFeatures layerFeatures = new LayerFeatures(z);
-                final String renderParametersUrlString = String.format(renderUrlFormat, z);
-                layerFeatures.extractFeatures(
-                        layerFeatures.loadMontage(renderParametersUrlString, options.getMontageFile(z), options.force),
-                        siftParameters,
-                        options.minScale,
-                        options.maxScale);
-                return layerFeatures;
-            }
-        });
-
-        final List<LayerFeatures> driverFeatures = rddFeatures.collect();
-        logInfo("collected feature lists for " + driverFeatures.size() + " layers");
-
-        long totalFeatureCount = 0;
-
-        final Map<Double, LayerFeatures> driverZtoFeaturesMap = new HashMap<>(driverFeatures.size() * 2);
-        for (final LayerFeatures layerFeatures : driverFeatures) {
-            if (layerFeatures.size() > 20) {
-                driverZtoFeaturesMap.put(layerFeatures.getZ(), layerFeatures);
-                totalFeatureCount += layerFeatures.size();
-            } else {
-                System.out.println("WARNING: excluding layer " + layerFeatures.getZ() +
-                                   " because " + layerFeatures.size() + " features were found for it, " +
-                                   layerFeatures.getProcessingMessages());
-            }
-        }
-
-        logInfo("total feature count is " + totalFeatureCount);
-
-        return driverZtoFeaturesMap;
-    }
-
-    private static Tuple2<List<Double>, Set<Double>> filterOutLayersWithNoFeatures(
-            final List<Double> zValues,
-            final Map<Double, LayerFeatures> zToFeaturesMap) {
-        final List<Double> zValuesWithFeatures;
-        final Set<Double> zValuesWithoutFeatures;
-
-        if (zValues.size() == zToFeaturesMap.size()) {
-            zValuesWithFeatures = zValues;
-            zValuesWithoutFeatures = new HashSet<>();
-        } else {
-            zValuesWithFeatures = new ArrayList<>(zValues.size());
-            zValuesWithoutFeatures = new HashSet<>();
-            for (final Double z : zValues) {
-                if (zToFeaturesMap.containsKey(z)) {
-                    zValuesWithFeatures.add(z);
-                } else {
-                    zValuesWithoutFeatures.add(z);
-                }
-            }
-        }
-
-        return new Tuple2<>(zValuesWithFeatures, zValuesWithoutFeatures);
-    }
-
-    private static List<Tuple2<Double, Double>> calculateLayerPairs(final List<Double> zValues,
-                                                                    final int range) {
-        final int n = zValues.size();
-        final List<Tuple2<Double, Double>> layerPairs = new ArrayList<>(n * range);
-        for (int i = 0; i < n; i++) {
-            for (int k = i + 1; k < n && k < i + range; k++) {
-                layerPairs.add(new Tuple2<>(zValues.get(i), zValues.get(k)));
-            }
-        }
-
-        logInfo("derived " + layerPairs.size() + " layer pairs");
-
-        return layerPairs;
-    }
-
-    private static List<LayerSimilarity> calculateSimilarities(final JavaSparkContext sc,
-                                                               final Map<Double, LayerFeatures> zToFeaturesMap,
-                                                               final List<Tuple2<Double, Double>> zPairs) {
-
-        // broadcast feature map to all nodes for use in similarity calculation
-        final Broadcast<Map<Double, LayerFeatures>> broadcastZToFeaturesMap = sc.broadcast(zToFeaturesMap);
-
-        final JavaRDD<Tuple2<Double, Double>> rddZPairs = sc.parallelize(zPairs);
-
-        final JavaRDD<LayerSimilarity> rddSimilarity = rddZPairs.map(
-                new Function<Tuple2<Double, Double>, LayerSimilarity>() {
-
-                    @Override
-                    public LayerSimilarity call(final Tuple2<Double, Double> tuple2)
-                            throws Exception {
-                        final Double z1 = tuple2._1();
-                        final Double z2 = tuple2._2();
-                        setupExecutorLog4j("z1:" + z1 + ",z2:" + z2);
-                        final LayerSimilarity layerSimilarity = new LayerSimilarity(z1, z2);
-                        layerSimilarity.calculateInlierRatio(broadcastZToFeaturesMap.getValue());
-                        return layerSimilarity;
-                    }
-                });
-
-        final List<LayerSimilarity> driverSimilarities = rddSimilarity.collect();
-        logInfo("collected similarities for " + driverSimilarities.size() + " layer pairs");
-
-        return driverSimilarities;
     }
 
     private static void buildSimilarityMatrixAndGenerateResults(final List<Double> zValues,
@@ -550,7 +698,7 @@ public class LayerOrderAnalyzer {
             final Map<Double, AffineTransform> transforms,
             final Rectangle2D.Double bounds,
             final String renderUrlFormat,
-            final String outputPath) {
+            final File alignDirectory) {
 
         final JavaRDD<Double> rddZ = sc.parallelize(zValues);
         final JavaRDD<Boolean> rddFeatures = rddZ.map(new Function<Double, Boolean>() {
@@ -561,7 +709,7 @@ public class LayerOrderAnalyzer {
                 final String renderParametersUrlString = String.format(renderUrlFormat, z);
                 final RenderParameters renderParameters = RenderParameters.loadFromUrl(renderParametersUrlString);
 
-                logInfo("loadMontage: retrieved " + renderParametersUrlString);
+                logInfo("renderTransformedMontages: retrieved " + renderParametersUrlString);
 
                 /* attach global affine to TileSpecs */
                 final AffineModel2D affine = new AffineModel2D();
@@ -581,12 +729,13 @@ public class LayerOrderAnalyzer {
                 final BufferedImage montageImage = renderParameters.openTargetImage();
                 Render.render(renderParameters, montageImage, ImageProcessorCache.DISABLED_CACHE);
 
+                final File alignImageFile = new File(alignDirectory, z + ".png");
                 boolean success = false;
                 try {
-                    Utils.saveImage(montageImage, outputPath + z + ".png", "png", true, 9);
+                    Utils.saveImage(montageImage, alignImageFile.getAbsolutePath(), "png", true, 9);
                     success = true;
                 } catch (final Throwable t) {
-                    logInfo("renderTransformedMontage: failed to save " + outputPath + z);
+                    logInfo("renderTransformedMontages: failed to save " + alignImageFile.getAbsolutePath());
                     t.printStackTrace();
                 }
 
@@ -608,7 +757,6 @@ public class LayerOrderAnalyzer {
             }
         });
     }
-
 
     private static void exportMatchesForKhaled(
             final Iterable<LayerSimilarity> similarities,

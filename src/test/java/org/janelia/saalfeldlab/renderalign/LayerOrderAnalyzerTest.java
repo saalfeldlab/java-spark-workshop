@@ -1,11 +1,15 @@
 package org.janelia.saalfeldlab.renderalign;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import mpicbg.imagefeatures.FloatArray2DSIFT;
+
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -19,6 +23,20 @@ import org.junit.Test;
 @Ignore
 public class LayerOrderAnalyzerTest {
 
+    private Map<Double, LayerFeatures> zToFeaturesMap = new HashMap<>();
+
+    @After
+    public void tearDown() {
+        for (LayerFeatures layerFeatures : zToFeaturesMap.values()) {
+            final File featureListFile = layerFeatures.getFeatureListFile();
+            if ((featureListFile != null) && featureListFile.exists()) {
+                if (! featureListFile.delete()) {
+                    System.out.println("failed to delete " + featureListFile.getAbsolutePath());
+                }
+            }
+        }
+    }
+
     @Test
     public void tesGetZValues() throws Exception {
         final List<Double> zValues = LayerOrderAnalyzer.getZValues(
@@ -28,22 +46,24 @@ public class LayerOrderAnalyzerTest {
     }
 
     @Test
-    public void testRatios() {
+    public void testRatios()
+            throws IOException {
 
         final int n = 5;
 
         final List<Double> zValues = new ArrayList<>();
-        final Map<Double, LayerFeatures> zToFeaturesMap = new HashMap<>();
 
         for (int i = 0; i < n; i++) {
             final Double z = i + 2050.0;
             zValues.add(z);
-            final LayerFeatures layerFeatures = new LayerFeatures(z);
-            layerFeatures.extractFeatures(
-                    layerFeatures.loadMontage("not-used", new File("src/test/resources/montage/" + z + ".png"), false),
-                    LayerFeatures.DEFAULT_SIFT_PARAMETERS,
-                    0.5,
-                    1.0);
+            final File montageFile = new File(getMontageFilePath(z));
+            final File featureListFile = new File(getFeatureListFilePath(z));
+            final LayerFeatures layerFeatures = new LayerFeatures(z, null, null, montageFile, featureListFile);
+            layerFeatures.loadMontageAndExtractFeatures(false,
+                                                        new FloatArray2DSIFT.Param(),
+                                                        0.5,
+                                                        0.85,
+                                                        false);
             zToFeaturesMap.put(z, layerFeatures);
         }
 
@@ -58,4 +78,13 @@ public class LayerOrderAnalyzerTest {
         }
 
     }
+
+    private static String getMontageFilePath(Double z) {
+        return "src/test/resources/montage/" + z + ".png";
+    }
+
+    private static String getFeatureListFilePath(Double z) {
+        return "src/test/resources/montage/" + z + "_features.ser";
+    }
+
 }

@@ -1,19 +1,24 @@
 package org.janelia.saalfeldlab.renderalign;
 
+import com.google.gson.Gson;
+
 import ij.ImagePlus;
 import ij.process.ByteProcessor;
 
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import mpicbg.ij.SIFT;
 import mpicbg.imagefeatures.Feature;
@@ -28,46 +33,50 @@ import org.janelia.alignment.Utils;
 import org.janelia.alignment.spec.Bounds;
 import org.janelia.alignment.util.ImageProcessorCache;
 
-import com.google.gson.Gson;
-
 /**
  * Collection of features extracted from a layer montage.
- *
- * TODO the bounding box is not generated if an existing image was re-used
  *
  * @author Stephan Saalfeld <saalfelds@janelia.hhmi.org>
  */
 public class LayerFeatures implements Serializable {
 
-    public static final FloatArray2DSIFT.Param DEFAULT_SIFT_PARAMETERS = new FloatArray2DSIFT.Param();
-    static {
-        DEFAULT_SIFT_PARAMETERS.fdSize = 4;
-        DEFAULT_SIFT_PARAMETERS.maxOctaveSize = 3000;
-        DEFAULT_SIFT_PARAMETERS.minOctaveSize = 800;
-        DEFAULT_SIFT_PARAMETERS.steps = 3;
-    }
-
     private Double z;
-    private List<Feature> featureList;
-    private String processingMessages;
-    private Rectangle2D.Double bounds = null;
+    private String renderParametersUrlString;
+    private String boundsUrlString;
+    private File montageFile;
+    private File featureListFile;
 
-    public LayerFeatures(final Double z) {
+    // derived data
+    private Rectangle2D.Double bounds;
+    private Integer featureCount;
+    private String processingMessages;
+
+    public LayerFeatures(final Double z,
+                         final String renderParametersUrlString,
+                         final String boundsUrlString,
+                         final File montageFile,
+                         final File featureListFile) {
         this.z = z;
-        this.featureList = new ArrayList<>();
-        this.processingMessages = null;
+        this.renderParametersUrlString = renderParametersUrlString;
+        this.boundsUrlString = boundsUrlString;
+        this.montageFile = montageFile;
+        this.featureListFile = featureListFile;
     }
 
     public Double getZ() {
         return z;
     }
 
-    public List<Feature> getFeatureList() {
-        return featureList;
+    public File getFeatureListFile() {
+        return featureListFile;
     }
 
     public Rectangle2D.Double getBounds() {
         return bounds;
+    }
+
+    public Integer getFeatureCount() {
+        return featureCount;
     }
 
     public String getProcessingMessages() {
@@ -76,41 +85,57 @@ public class LayerFeatures implements Serializable {
 
     @Override
     public String toString() {
-        return "{\"z\": " + z +
-               ", \"featureListSize\": " + size() +
+        return "LayerFeatures{z=" + z +
+               ", renderParametersUrlString='" + renderParametersUrlString + '\'' +
+               ", boundsUrlString='" + boundsUrlString + '\'' +
+               ", montageFile=" + montageFile +
+               ", featureListFile=" + featureListFile +
+               ", bounds=" + bounds +
+               ", featureCount=" + featureCount +
+               ", processingMessages='" + processingMessages + '\'' +
                '}';
     }
 
-    /**
-     * @return number of extracted features.
-     */
-    public int size() {
-        return featureList.size();
+    public List<Feature> loadMontageAndExtractFeatures(final boolean forceMontageRendering,
+                                                       final FloatArray2DSIFT.Param siftParameters,
+                                                       final double minScale,
+                                                       final double maxScale,
+                                                       final boolean forceFeatureExtraction)
+            throws IllegalStateException, IOException {
+
+        final List<Feature> featureList;
+
+        if (forceMontageRendering || forceFeatureExtraction ||
+            (featureListFile == null) || (! featureListFile.exists())) {
+
+            final BufferedImage montageImage = loadMontage(forceMontageRendering);
+            featureList = extractFeatures(montageImage, siftParameters, minScale, maxScale);
+
+            if (featureListFile != null) {
+                writeFeatureListToFile(featureList, featureListFile);
+            }
+
+        } else {
+            featureList = readFeatureListFromFile(featureListFile);
+            featureCount = featureList.size();
+            bounds = loadBounds(boundsUrlString);
+        }
+
+        return featureList;
     }
 
-    /**
-     * Adds this layer's feature list to the specified map (with z value keys).
-     */
-    public List<Feature> addToMap(final Map<Double, List<Feature>> map) {
-        return map.put(z, featureList);
+    public List<Feature> getPersistedFeatureList()
+            throws IllegalArgumentException {
+        return readFeatureListFromFile(featureListFile);
     }
-
 
     /**
      * Loads the layer's montage image either from disk or by rendering it.
      *
-     * @param  renderParametersUrlString  URL for render parameters in case montage needs to be rendered.
-     *
-     * @param  montageFile                (optional) cached montage on disk.
-     *
-     * @param  force                      if true, montage will be re-rendered even if a
-     *                                    cached version already exists on disk.
-     *
-     * TODO re-using existing image means that we do not have bounds!!!  Fix!
+     * @param  force if true, montage will be re-rendered even if a
+     *               cached version already exists on disk.
      */
-    public BufferedImage loadMontage(final String renderParametersUrlString,
-                            final File montageFile,
-                            final boolean force) {
+    public BufferedImage loadMontage(final boolean force) {
 
         LOG.info("loadMontage: entry, z=" + z);
 
@@ -156,46 +181,15 @@ public class LayerFeatures implements Serializable {
             final ImagePlus ip = Utils.openImagePlus(montageFile.getAbsolutePath());
             montageImage = ip.getBufferedImage();
             LOG.info("loadMontage: loaded " + montageFile.getAbsolutePath());
-            final String boundsUrlString = renderParametersUrlString.replace("render-parameters", "bounds");
 
-            bounds = loadBounds(boundsUrlString);
+            if (boundsUrlString != null) {
+                bounds = loadBounds(boundsUrlString);
+            }
         }
 
         LOG.info("loadMontage: exit, z=" + z + ", elapsedTime=" + (timer.stop() / 1000) + "s");
 
         return montageImage;
-    }
-
-    static Rectangle2D.Double loadBounds(final String url) {
-
-        Bounds bounds;
-        InputStream urlStream = null;
-        try {
-            try {
-                final URL urlObject = new URL(url);
-                urlStream = urlObject.openStream();
-            } catch (final Throwable t) {
-                throw new IllegalArgumentException("failed to load bounds from " + url, t);
-            }
-
-            bounds = new Gson().fromJson(new InputStreamReader(urlStream), Bounds.class);
-
-        } finally {
-            if (urlStream != null) {
-                try {
-                    urlStream.close();
-                } catch (final IOException e) {
-                    LOG.warn("failed to close " + url + ", ignoring error", e);
-                }
-            }
-        }
-
-
-        return new Rectangle2D.Double(
-                bounds.getMinX(),
-                bounds.getMinY(),
-                bounds.getMaxX() - bounds.getMinX() + 1,
-                bounds.getMaxY() - bounds.getMinY() + 1);
     }
 
     /**
@@ -204,7 +198,10 @@ public class LayerFeatures implements Serializable {
      * @throws IllegalStateException
      *   if {@link #loadMontage} was not called first to load the montage image into memory.
      */
-    public void extractFeatures(final BufferedImage montageImage, final FloatArray2DSIFT.Param siftParameters, final double minScale, final double maxScale) throws IllegalStateException {
+    public List<Feature> extractFeatures(final BufferedImage montageImage,
+                                         final FloatArray2DSIFT.Param siftParameters,
+                                         final double minScale,
+                                         final double maxScale) throws IllegalStateException {
 
         LOG.info("extractFeatures: entry, z=" + z);
 
@@ -227,7 +224,10 @@ public class LayerFeatures implements Serializable {
         final FloatArray2DSIFT sift = new FloatArray2DSIFT(localSiftParameters);
         final SIFT ijSIFT = new SIFT(sift);
 
+        final List<Feature> featureList = new ArrayList<>();
         ijSIFT.extractFeatures(imagePlus.getProcessor(), featureList);
+
+        this.featureCount = featureList.size();
 
         if (featureList.size() == 0) {
 
@@ -258,33 +258,128 @@ public class LayerFeatures implements Serializable {
 
         LOG.info("extractFeatures: exit, extracted " + featureList.size() + " features for z=" + z +
                  ", elapsedTime=" + (timer.stop() / 1000) + "s");
+
+        return featureList;
+    }
+
+    public static void writeFeatureListToFile(final List<Feature> featureList,
+                                              final File file)
+            throws IOException {
+        try (ObjectOutputStream objectOutputStream = new ObjectOutputStream(new FileOutputStream(file))) {
+            objectOutputStream.writeObject(featureList);
+        }
+        LOG.info("writeFeatureListToFile: wrote " + featureList.size() + " features to " + file.getAbsolutePath());
+    }
+
+    public static List<Feature> readFeatureListFromFile(final File file)
+            throws IllegalArgumentException {
+
+        if (file == null) {
+            throw new IllegalArgumentException("feature list file not specified");
+        }
+
+        if (! file.exists()) {
+            throw new IllegalArgumentException("feature list file " + file.getAbsolutePath() + " does not exist");
+        }
+
+        final List<Feature> featureList;
+        try (ObjectInputStream objectInputStream = new ObjectInputStream(new FileInputStream(file))) {
+            //noinspection unchecked
+            featureList = (List<Feature>) objectInputStream.readObject();
+        } catch (Throwable t) {
+            throw new IllegalArgumentException("failed to load feature list from " + file.getAbsolutePath(), t);
+        }
+
+        LOG.info("readFeatureListFromFile: read " + featureList.size() + " features from " + file.getAbsolutePath());
+
+        return featureList;
     }
 
     public static void main(final String[] args) {
 
-        if (args.length != 4) {
+        if (args.length < 3) {
             throw new IllegalArgumentException("USAGE: java " + LayerFeatures.class +
-                                               " <z> <renderUrl> <montageFile> <force>");
+                                               " <z> <renderParametersUrl> <boundsUrl>" +
+                                               " [montageFile] [featureListFile]" +
+                                               " [forceMontageRendering] [forceFeatureExtraction]");
         }
 
         final Double z = Double.parseDouble(args[0]);
         final String renderParametersUrlString = args[1];
-        final File montageFile = new File(args[2]);
-        final boolean force = Boolean.parseBoolean(args[3]);
+        final String boundsUrlString = args[2];
 
-        final LayerFeatures layerFeatures = new LayerFeatures(z);
-        layerFeatures.extractFeatures(
-                layerFeatures.loadMontage(
-                        renderParametersUrlString,
-                        montageFile,
-                        force),
-                DEFAULT_SIFT_PARAMETERS,
-                0.5,
-                1.0);
+        File montageFile = null;
+        File featureListFile = null;
+        boolean forceMontageRendering = false;
+        boolean forceFeatureExtraction = false;
 
-        final List<Feature> featureList = layerFeatures.getFeatureList();
-        System.out.println("extracted " + featureList.size() + " features");
+        if (args.length > 3) {
+            montageFile = new File(args[3]);
+            if (args.length > 4) {
+                featureListFile = new File(args[4]);
+                if (args.length > 5) {
+                    forceMontageRendering = Boolean.parseBoolean(args[5]);
+                    if (args.length > 6) {
+                        forceFeatureExtraction = Boolean.parseBoolean(args[6]);
+                    }
+                }
+            }
+        }
+
+        final LayerFeatures layerFeatures = new LayerFeatures(z,
+                                                              renderParametersUrlString,
+                                                              boundsUrlString,
+                                                              montageFile,
+                                                              featureListFile);
+        final List<Feature> featureList;
+        try {
+            featureList = layerFeatures.loadMontageAndExtractFeatures(forceMontageRendering,
+                                                                      new FloatArray2DSIFT.Param(),
+                                                                      0.5,
+                                                                      0.85,
+                                                                      forceFeatureExtraction);
+            System.out.println("extracted " + featureList.size() + " features");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
     }
+
+    private static Rectangle2D.Double loadBounds(final String url) {
+
+        Bounds bounds;
+        InputStream urlStream = null;
+        try {
+            try {
+                final URL urlObject = new URL(url);
+                urlStream = urlObject.openStream();
+            } catch (final Throwable t) {
+                throw new IllegalArgumentException("failed to load bounds from " + url, t);
+            }
+
+            bounds = new Gson().fromJson(new InputStreamReader(urlStream), Bounds.class);
+
+        } finally {
+            if (urlStream != null) {
+                try {
+                    urlStream.close();
+                } catch (final IOException e) {
+                    LOG.warn("failed to close " + url + ", ignoring error", e);
+                }
+            }
+        }
+
+        final Rectangle2D.Double boundingBox = new Rectangle2D.Double(
+                bounds.getMinX(),
+                bounds.getMinY(),
+                bounds.getMaxX() - bounds.getMinX() + 1,
+                bounds.getMaxY() - bounds.getMinY() + 1);
+
+        LOG.info("loadBounds: loaded " + boundingBox + " from " + url);
+
+        return boundingBox;
+    }
+
 
     private static final Logger LOG = LogManager.getLogger(LayerFeatures.class);
 }
