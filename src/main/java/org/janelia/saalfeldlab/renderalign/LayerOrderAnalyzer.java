@@ -697,7 +697,7 @@ public class LayerOrderAnalyzer {
         try (final FileOutputStream fos = new FileOutputStream(khaledExportPath + "khaled-matches.txt");
                 final OutputStreamWriter out = new OutputStreamWriter(fos, "UTF-8");
                 final FileOutputStream fos2 = new FileOutputStream(khaledExportPath + "khaled-ids.txt");
-                final OutputStreamWriter out2 = new OutputStreamWriter(fos, "UTF-8");) {
+                final OutputStreamWriter out2 = new OutputStreamWriter(fos2, "UTF-8");) {
             for (final LayerSimilarity ls : similarities) {
                 final long id1 = Double.doubleToLongBits(ls.getZ1());
                 final long id2 = Double.doubleToLongBits(ls.getZ2());
@@ -712,7 +712,7 @@ public class LayerOrderAnalyzer {
             out.close();
             for (final Double z : zValues) {
                 final long id = Double.doubleToLongBits(z);
-                out2.write(id + "\t" + montageExportPath + z + ".png");
+                out2.write(id + "\t" + montageExportPath + z + ".png\n");
             }
             out2.close();
         } catch (final IOException e) {
