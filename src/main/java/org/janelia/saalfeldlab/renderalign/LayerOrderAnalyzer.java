@@ -220,7 +220,7 @@ public class LayerOrderAnalyzer {
                                                                          zToFeaturesMap,
                                                                          layerPairs);
 
-        exportMatchesForKhaled(similarities, zValues, options.outputPath, options.outputPath + "layer_montages/");
+        exportMatchesForKhaled(similarities, zValues, options.outputPath, options.outputPath + "layer_images/");
 
         /* align the thing */
 
