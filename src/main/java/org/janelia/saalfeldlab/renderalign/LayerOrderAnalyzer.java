@@ -256,6 +256,7 @@ public class LayerOrderAnalyzer {
 
         /* three pass optimization, first using the regularizer exclusively ... */
         try {
+            tc.preAlign();
             tc.optimize(0.01, 5000, 200, 0.9);
         } catch (NotEnoughDataPointsException | IllDefinedDataPointsException e) {
             e.printStackTrace();
