@@ -94,7 +94,7 @@ public class LayerOrderAnalyzer {
         private String outputPath = "/tmp/";
 
         @Option(name = "-r", aliases = {"--range"}, required = false,
-                usage = "Range (maximum distance) for similarity comparisions.")
+                usage = "Range (maximum distance) for similarity comparisons.")
         private Integer range = 48;
 
         @Option(name = "-f", aliases = {"--forceMontageRendering"}, required = false,
@@ -242,7 +242,10 @@ public class LayerOrderAnalyzer {
                                                                          zToFeaturesMap,
                                                                          layerPairs);
         
-        exportMatchesForKhaled(similarities, zValues, options.outputPath, options.outputPath + "layer_images/");
+        exportMatchesForKhaled(similarities,
+                               zValues,
+                               options.outputPath,
+                               options.getLayerImagesDir().getAbsolutePath());
         
         alignTiles(options,
                    zValues,
@@ -251,108 +254,6 @@ public class LayerOrderAnalyzer {
                    zToFeaturesMap,
                    zValuesWithFeatures,
                    similarities);
-
-        /* align the thing */
-
-        /* make tiles */
-        final HashMap<Double, Tile<?>> zTiles = new HashMap<>();
-        for (final Double z : zValues)
-            //noinspection unchecked
-            zTiles.put(
-                    z,
-                    new Tile(
-                            new InterpolatedAffineModel2D<>(
-                                    new mpicbg.models.AffineModel2D(),
-                                    new mpicbg.models.RigidModel2D(),
-                                    1.0)));
-
-        for (final LayerSimilarity sim : similarities) {
-            if (sim.isModelFound()) {
-                final double weight = sim.getInlierRatio();
-                for (final PointMatch match : sim.getInliers()) {
-                    match.setWeights(new double[]{weight});
-                }
-
-                final Tile t1 = zTiles.get(sim.getZ1());
-                final Tile t2 = zTiles.get(sim.getZ2());
-                //noinspection unchecked
-                t1.connect(t2, sim.getInliers());
-            }
-        }
-
-        /* feed all tiles that have connections into tile configuration, report those that are disconnected */
-        final TileConfiguration tc = new TileConfiguration();
-        for (final Entry<Double, Tile<?>> entry : zTiles.entrySet()) {
-            final Tile<?> t = entry.getValue();
-            if (!t.getConnectedTiles().isEmpty())
-                tc.addTile(entry.getValue());
-            else
-                logInfo(entry.getKey() + " is disconnected.");
-        }
-
-        /* three pass optimization, first using the regularizer exclusively ... */
-        try {
-            tc.optimize(0.01, 5000, 200, 0.9);
-        } catch (NotEnoughDataPointsException | IllDefinedDataPointsException e) {
-            e.printStackTrace();
-        }
-        /* ... then using the desired model with low regularization ... */
-        for (final Tile<?> t : zTiles.values()) {
-            ((InterpolatedAffineModel2D<?, ?>)t.getModel()).setLambda(0.1);
-        }
-        try {
-            tc.optimize(0.01, 5000, 200, 0.9);
-        } catch (NotEnoughDataPointsException | IllDefinedDataPointsException e) {
-            e.printStackTrace();
-        }
-        /* ... then using the desired model with very low regularization.*/
-        for (final Tile<?> t : zTiles.values()) {
-            ((InterpolatedAffineModel2D<?, ?>)t.getModel()).setLambda(0.01);
-        }
-        try {
-            tc.optimize(0.01, 5000, 200, 0.9);
-        } catch (NotEnoughDataPointsException | IllDefinedDataPointsException e) {
-            e.printStackTrace();
-        }
-
-        logInfo("Aligned.");
-
-        final HashMap<Double, AffineTransform> zTransforms = new HashMap<>();
-
-        final Rectangle2D.Double union = new Rectangle2D.Double();
-        /* convert affine transforms from scaled to world space */
-        /* I believe the global transform A is S^-1A'ST^-1, but I am tired */
-        for (final Entry<Double, Tile<?>> entry : zTiles.entrySet()) {
-            final Double z = entry.getKey();
-            final Tile<?> t = entry.getValue();
-            final LayerFeatures lf = zToFeaturesMap.get(z);
-            final Rectangle2D.Double bounds = lf.getBounds();
-            final AffineTransform affine = new AffineTransform();
-            affine.scale(1.0 / options.scale, 1.0 / options.scale);
-            affine.concatenate(((Affine2D)t.getModel()).createAffine());
-            affine.scale(options.scale, options.scale);
-            affine.translate(-bounds.x, -bounds.y);
-            zTransforms.put(entry.getKey(), affine);
-            union.add(affine.createTransformedShape(bounds).getBounds2D());
-        }
-
-        logInfo("Bounding box of aligned series is " + union.toString() + ".");
-
-        logInfo("Affines:");
-        for(final Entry<Double, AffineTransform> entry : zTransforms.entrySet()) {
-            logInfo(entry.getKey() + " : " + entry.getValue());
-        }
-
-        final int transformedImages = renderTransformedMontages(
-                sc,
-                zValuesWithFeatures,
-                zTransforms,
-                union,
-                renderUrlFormat,
-                options.outputPath + "aligned/");
-
-        logInfo("Rendered " + transformedImages + " images");
-
 
         sc.stop();
 
@@ -766,11 +667,11 @@ public class LayerOrderAnalyzer {
         try (final FileOutputStream fos = new FileOutputStream(khaledExportPath + "khaled-matches.txt");
                 final OutputStreamWriter out = new OutputStreamWriter(fos, "UTF-8");
                 final FileOutputStream fos2 = new FileOutputStream(khaledExportPath + "khaled-ids.txt");
-                final OutputStreamWriter out2 = new OutputStreamWriter(fos2, "UTF-8");) {
+                final OutputStreamWriter out2 = new OutputStreamWriter(fos2, "UTF-8")) {
             for (final LayerSimilarity ls : similarities) {
                 final long id1 = Double.doubleToLongBits(ls.getZ1());
                 final long id2 = Double.doubleToLongBits(ls.getZ2());
-                if (ls.isModelFound() == true) {
+                if (ls.isModelFound()) {
                     for (final PointMatch p : ls.getInliers()) {
                         final double[] p1 = p.getP1().getL();
                         final double[] p2 = p.getP2().getL();
@@ -781,7 +682,7 @@ public class LayerOrderAnalyzer {
             out.close();
             for (final Double z : zValues) {
                 final long id = Double.doubleToLongBits(z);
-                out2.write(id + "\t" + montageExportPath + z + ".png\n");
+                out2.write(id + '\t' + montageExportPath + '/' + z + ".png\n");
             }
             out2.close();
         } catch (final IOException e) {
