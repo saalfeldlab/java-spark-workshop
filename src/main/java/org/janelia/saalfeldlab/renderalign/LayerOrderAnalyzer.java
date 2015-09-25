@@ -90,11 +90,11 @@ public class LayerOrderAnalyzer {
 
         @Option(name = "-a", aliases = {"--minZ"}, required = false,
                 usage = "Exclude all layers with z values less than this minimum.")
-        private Double minZ = Double.MAX_VALUE;
+        private Double minZ = Double.MIN_VALUE;
 
         @Option(name = "-b", aliases = {"--maxZ"}, required = false,
                 usage = "Exclude all layers with z values greater than this maximum.")
-        private Double maxZ = Double.MIN_VALUE;
+        private Double maxZ = Double.MAX_VALUE;
 
         @Option(name = "-t", aliases = {"--scale"}, required = true, usage = "Scale.")
         private Double scale = 1.0 / 8.0;
