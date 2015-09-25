@@ -20,6 +20,7 @@ import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -86,6 +87,14 @@ public class LayerOrderAnalyzer {
 
         @Option(name = "-s", aliases = {"--stack"}, required = true, usage = "Stack ID.")
         private String stackId = "v5_align_tps";
+
+        @Option(name = "-a", aliases = {"--minZ"}, required = false,
+                usage = "Exclude all layers with z values less than this minimum.")
+        private Double minZ = Double.MAX_VALUE;
+
+        @Option(name = "-b", aliases = {"--maxZ"}, required = false,
+                usage = "Exclude all layers with z values greater than this maximum.")
+        private Double maxZ = Double.MIN_VALUE;
 
         @Option(name = "-t", aliases = {"--scale"}, required = true, usage = "Scale.")
         private Double scale = 1.0 / 8.0;
@@ -207,8 +216,7 @@ public class LayerOrderAnalyzer {
 
         final String baseUrlString = options.getBaseUrl();
 
-        final List<Double> zValues = getZValues(baseUrlString);
-//        final List<Double> zValues = getZValues(baseUrlString);
+        final List<Double> zValues = getZValues(baseUrlString, options.minZ, options.maxZ);
 
         final SparkConf conf = new SparkConf().setAppName("LayerOrderAnalyzer");
 
@@ -266,7 +274,9 @@ public class LayerOrderAnalyzer {
         logInfo("*************** Job done! ***************");
     }
 
-    public static List<Double> getZValues(final String baseUrlString)
+    public static List<Double> getZValues(final String baseUrlString,
+                                          final Double minZ,
+                                          final Double maxZ)
             throws IOException {
 
         final URL zValuesUrl = new URL(baseUrlString + "/zValues");
@@ -275,6 +285,16 @@ public class LayerOrderAnalyzer {
         final List<Double> zValues = jsonHelper.fromJsonArray(new InputStreamReader(zValuesUrl.openStream()));
 
         logInfo("retrieved " + zValues.size() + " values from " + zValuesUrl);
+
+        final int stackLayerCount = zValues.size();
+        Double z;
+        for (final Iterator<Double> i = zValues.iterator(); i.hasNext();) {
+            z = i.next();
+            if ((z < minZ) || (z > maxZ)) {
+                i.remove();
+            }
+        }
+        logInfo("removed " + (stackLayerCount - zValues.size()) + " out-of-range layers");
 
         return zValues;
     }
