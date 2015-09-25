@@ -88,9 +88,9 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
         LOG.info("calculateInlierRatio: entry");
 
         final float rod = 0.92f;
-        final float maxEpsilon = 50f;
+        final float maxEpsilon = 20f;
         final float minInlierRatio = 0.0f;
-        final int minNumInliers = 20;
+        final int minNumInliers = 10;
 
         final AffineModel2D model = new AffineModel2D();
 
