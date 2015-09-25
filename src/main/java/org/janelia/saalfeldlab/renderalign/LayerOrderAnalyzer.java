@@ -191,6 +191,14 @@ public class LayerOrderAnalyzer {
             return new File(outputPath, "align");
         }
 
+        public File getDirectoryWithZRange(final String baseName,
+                                           final List<Double> zValues) {
+            final double firstZ = zValues.get(0);
+            final double lastZ = zValues.get(zValues.size() - 1);
+            final String directoryName = String.format("%s_%05.2f_%05.2f", baseName, firstZ, lastZ);
+            return new File(outputPath, directoryName).getAbsoluteFile();
+        }
+
         public void makeDataDirectories() throws IllegalArgumentException {
             final File[] dataDirectories = new File[] {
                     getLayerImagesDir(),
@@ -253,7 +261,7 @@ public class LayerOrderAnalyzer {
 
         exportMatchesForKhaled(similarities,
                                zValues,
-                               options.outputPath,
+                               options.getDirectoryWithZRange("solver", zValues),
                                options.getLayerImagesDir().getAbsolutePath());
 
         alignTiles(options,
@@ -269,7 +277,7 @@ public class LayerOrderAnalyzer {
         buildSimilarityMatrixAndGenerateResults(zValues,
                                                 zValuesWithoutFeatures,
                                                 similarities,
-                                                options.outputPath,
+                                                options.getDirectoryWithZRange("similarities", zValues),
                                                 options.concordePath);
 
         logInfo("*************** Job done! ***************");
@@ -277,19 +285,22 @@ public class LayerOrderAnalyzer {
 
     static private List<Double> filter(List<Double> zValues, final Double firstZ, final Double lastZ) {
         if (!Double.isNaN(firstZ)) {
-            final ArrayList<Double> filtered = new ArrayList<Double>();
+            final ArrayList<Double> filtered = new ArrayList<>();
             for (final Double z : zValues)
                 if (z >= firstZ)
                     filtered.add(z);
             zValues = filtered;
         }
         if (!Double.isNaN(lastZ)) {
-            final ArrayList<Double> filtered = new ArrayList<Double>();
+            final ArrayList<Double> filtered = new ArrayList<>();
             for (final Double z : zValues)
                 if (z <= lastZ)
                     filtered.add(z);
             zValues = filtered;
         }
+
+        logInfo("after filtering, working with " + zValues.size() + " layers");
+
         return zValues;
     }
 
@@ -540,14 +551,12 @@ public class LayerOrderAnalyzer {
     private static void buildSimilarityMatrixAndGenerateResults(final List<Double> zValues,
                                                                 final Set<Double> zValuesWithoutFeatures,
                                                                 final List<LayerSimilarity> similarityList,
-                                                                final String outputPath,
+                                                                final File similarityDir,
                                                                 final String concordePath) {
 
         try {
             final double firstZ = zValues.get(0);
             final double lastZ = zValues.get(zValues.size() - 1);
-            final String similarityDirName = String.format("similarities_%05.2f_%05.2f", firstZ, lastZ);
-            final File similarityDir = new File(outputPath, similarityDirName).getCanonicalFile();
             final File matrixFile = new File(similarityDir, "matrix.tif");
 
             if (similarityDir.exists()) {
@@ -688,12 +697,13 @@ public class LayerOrderAnalyzer {
 
     private static void exportMatchesForKhaled(
             final Iterable<LayerSimilarity> similarities,
-            final Iterable<Double> zValues,
-            final String khaledExportPath,
+            final List<Double> zValues,
+            final File solverExportDir,
             final String montageExportPath) {
-        try (final FileOutputStream fos = new FileOutputStream(khaledExportPath + "khaled-matches.txt");
+
+        try (final FileOutputStream fos = new FileOutputStream(new File(solverExportDir, "matches.txt"));
                 final OutputStreamWriter out = new OutputStreamWriter(fos, "UTF-8");
-                final FileOutputStream fos2 = new FileOutputStream(khaledExportPath + "khaled-ids.txt");
+                final FileOutputStream fos2 = new FileOutputStream(new File(solverExportDir, "ids.txt"));
                 final OutputStreamWriter out2 = new OutputStreamWriter(fos2, "UTF-8")) {
             for (final LayerSimilarity ls : similarities) {
                 final long id1 = Double.doubleToLongBits(ls.getZ1());
