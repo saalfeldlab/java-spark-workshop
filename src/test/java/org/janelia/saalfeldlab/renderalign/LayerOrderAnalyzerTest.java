@@ -40,11 +40,9 @@ public class LayerOrderAnalyzerTest {
     @Test
     public void tesGetZValues() throws Exception {
         final List<Double> zValues = LayerOrderAnalyzer.getZValues(
-                "http://tem-services.int.janelia.org:8080/render-ws/v1/owner/flyTEM/project/FAFB00/stack/v8_montage",
-                5000.0,
-                5009.0);
+                "http://tem-services.int.janelia.org:8080/render-ws/v1/owner/flyTEM/project/FAFB00/stack/v8_montage");
 
-        Assert.assertEquals("missing z values", 10, zValues.size());
+        Assert.assertTrue("missing z values", zValues.size() > 10);
     }
 
     @Test
