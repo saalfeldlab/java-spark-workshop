@@ -259,6 +259,12 @@ public class LayerOrderAnalyzer {
                                                                          zToFeaturesMap,
                                                                          layerPairs);
 
+        buildSimilarityMatrixAndGenerateResults(zValues,
+                                                zValuesWithoutFeatures,
+                                                similarities,
+                                                options.getDirectoryWithZRange("similarities", zValues),
+                                                options.concordePath);
+
         exportMatchesForKhaled(similarities,
                                zValues,
                                options.getDirectoryWithZRange("solver", zValues),
@@ -273,12 +279,6 @@ public class LayerOrderAnalyzer {
                    similarities);
 
         sc.stop();
-
-        buildSimilarityMatrixAndGenerateResults(zValues,
-                                                zValuesWithoutFeatures,
-                                                similarities,
-                                                options.getDirectoryWithZRange("similarities", zValues),
-                                                options.concordePath);
 
         logInfo("*************** Job done! ***************");
     }
