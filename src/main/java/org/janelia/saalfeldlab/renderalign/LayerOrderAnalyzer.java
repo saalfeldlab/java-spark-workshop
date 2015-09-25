@@ -35,6 +35,7 @@ import mpicbg.models.PointMatch;
 import mpicbg.models.Tile;
 import mpicbg.models.TileConfiguration;
 import mpicbg.trakem2.transform.AffineModel2D;
+import net.imglib2.img.ImagePlusAdapter;
 
 import org.apache.log4j.Appender;
 import org.apache.log4j.ConsoleAppender;
@@ -62,7 +63,6 @@ import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
 import org.python.google.common.io.Files;
 
-import net.imglib2.img.ImagePlusAdapter;
 import scala.Tuple2;
 
 /**
@@ -96,6 +96,14 @@ public class LayerOrderAnalyzer {
         @Option(name = "-r", aliases = {"--range"}, required = false,
                 usage = "Range (maximum distance) for similarity comparisons.")
         private Integer range = 48;
+
+        @Option(name = "-a", aliases = {"--firstZ"}, required = false,
+                usage = "First z value, default first in stack.")
+        private Double firstZ = Double.NaN;
+
+        @Option(name = "-b", aliases = {"--lastZ"}, required = false,
+                usage = "Last z value, default last in stack.")
+        private Double lastZ = Double.NaN;
 
         @Option(name = "-f", aliases = {"--forceMontageRendering"}, required = false,
                 usage = "Regenerate montage image even if it exists.")
@@ -147,6 +155,8 @@ public class LayerOrderAnalyzer {
                    ", stackId='" + stackId + '\'' +
                    ", scale=" + scale +
                    ", outputPath='" + outputPath + '\'' +
+                   ", firstZ=" + firstZ +
+                   ", lastZ=" + lastZ +
                    ", range=" + range +
                    ", forceMontageRendering=" + forceMontageRendering +
                    ", forceFeatureExtraction=" + forceFeatureExtraction +
@@ -186,7 +196,7 @@ public class LayerOrderAnalyzer {
                     getLayerImagesDir(),
                     getFeatureListDir(),
                     getAlignDir()};
-            for (File dataDir : dataDirectories) {
+            for (final File dataDir : dataDirectories) {
                 if (! dataDir.exists()) {
                     if (! dataDir.mkdir()) {
                         throw new IllegalArgumentException("failed to create " + dataDir.getAbsolutePath());
@@ -207,8 +217,7 @@ public class LayerOrderAnalyzer {
 
         final String baseUrlString = options.getBaseUrl();
 
-        final List<Double> zValues = getZValues(baseUrlString);
-//        final List<Double> zValues = getZValues(baseUrlString);
+        final List<Double> zValues = filter(getZValues(baseUrlString), options.firstZ, options.lastZ);
 
         final SparkConf conf = new SparkConf().setAppName("LayerOrderAnalyzer");
 
@@ -241,12 +250,12 @@ public class LayerOrderAnalyzer {
         final List<LayerSimilarity> similarities = calculateSimilarities(sc,
                                                                          zToFeaturesMap,
                                                                          layerPairs);
-        
+
         exportMatchesForKhaled(similarities,
                                zValues,
                                options.outputPath,
                                options.getLayerImagesDir().getAbsolutePath());
-        
+
         alignTiles(options,
                    zValues,
                    sc,
@@ -264,6 +273,24 @@ public class LayerOrderAnalyzer {
                                                 options.concordePath);
 
         logInfo("*************** Job done! ***************");
+    }
+
+    static private List<Double> filter(List<Double> zValues, final Double firstZ, final Double lastZ) {
+        if (!Double.isNaN(firstZ)) {
+            final ArrayList<Double> filtered = new ArrayList<Double>();
+            for (final Double z : zValues)
+                if (z >= firstZ)
+                    filtered.add(z);
+            zValues = filtered;
+        }
+        if (!Double.isNaN(lastZ)) {
+            final ArrayList<Double> filtered = new ArrayList<Double>();
+            for (final Double z : zValues)
+                if (z <= lastZ)
+                    filtered.add(z);
+            zValues = filtered;
+        }
+        return zValues;
     }
 
     public static List<Double> getZValues(final String baseUrlString)
