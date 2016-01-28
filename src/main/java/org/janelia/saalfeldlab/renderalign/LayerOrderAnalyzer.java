@@ -97,23 +97,23 @@ public class LayerOrderAnalyzer {
                 usage = "Range (maximum distance) for similarity comparisons.")
         private Integer range = 48;
 
-        @Option(name = "-a", aliases = {"--firstZ"}, required = false,
+        @Option(name = "-aa", aliases = {"--firstZ"}, required = false,
                 usage = "First z value, default first in stack.")
         private Double firstZ = Double.NaN;
 
-        @Option(name = "-b", aliases = {"--lastZ"}, required = false,
+        @Option(name = "-ab", aliases = {"--lastZ"}, required = false,
                 usage = "Last z value, default last in stack.")
         private Double lastZ = Double.NaN;
 
         @Option(name = "-f", aliases = {"--forceMontageRendering"}, required = false,
                 usage = "Regenerate montage image even if it exists.")
-        private Boolean forceMontageRendering = false;
+        private boolean forceMontageRendering = false;
 
         @Option(name = "-F", aliases = {"--forceFeatureExtraction"}, required = false,
                 usage = "Extract features even if they were already extracted.")
-        private Boolean forceFeatureExtraction = false;
+        private boolean forceFeatureExtraction = false;
 
-        @Option(name = "-d", aliases = {"--fdSize"}, required = false,
+        @Option(name = "-ad", aliases = {"--fdSize"}, required = false,
                 usage = "SIFT feature descriptor size (how many samples per row and column).")
         private Integer fdSize = 4;
 
@@ -125,12 +125,21 @@ public class LayerOrderAnalyzer {
                 usage = "SIFT maximum scale (minSize * minScale < size < maxSize * maxScale).")
         private Double maxScale = 0.85;
 
-        @Option(name = "-e", aliases = {"--steps"}, required = false,
+        @Option(name = "-ae", aliases = {"--steps"}, required = false,
                 usage = "SIFT steps per scale octave.")
         private Integer steps = 3;
 
-        @Option(name = "-c", aliases = {"--concordePath"}, required = true, usage = "Path to concorde executable.")
-        private String concordePath = "concorde";
+        @Option(name = "-af", aliases = {"--skipSimilarityMatrix"}, required = false,
+                usage = "Skip building a similarity matrix.")
+        private boolean skipSimilarityMatrix = false;
+
+        @Option(name = "-c", aliases = {"--concordePath"}, required = false,
+                usage = "Path to concorde executable (if unspecified, TSP analysis will not be performed).")
+        private String concordePath = null;
+
+        @Option(name = "-ag", aliases = {"--skipAlignedImageGeneration"}, required = false,
+                usage = "Skip generation of aligned layer images.")
+        private boolean skipAlignedImageGeneration = false;
 
         public Options(final String[] args) {
             final CmdLineParser parser = new CmdLineParser(this);
@@ -164,6 +173,8 @@ public class LayerOrderAnalyzer {
                    ", minSIFTScale=" + minScale +
                    ", maxSIFTScale=" + maxScale +
                    ", steps=" + steps +
+                   ", skipSimilarityMatrix=" + skipSimilarityMatrix +
+                   ", skipAlignedImageGeneration=" + skipAlignedImageGeneration +
                    '}';
         }
 
@@ -259,24 +270,28 @@ public class LayerOrderAnalyzer {
                                                                          zToFeaturesMap,
                                                                          layerPairs);
 
-        buildSimilarityMatrixAndGenerateResults(zValues,
-                                                zValuesWithoutFeatures,
-                                                similarities,
-                                                options.getDirectoryWithZRange("similarities", zValues),
-                                                options.concordePath);
-
         exportMatchesForSolver(similarities,
                                zValues,
                                options.getDirectoryWithZRange("solver", zValues),
                                options.getLayerImagesDir().getAbsolutePath());
 
-        alignTiles(options,
-                   zValues,
-                   sc,
-                   renderUrlFormat,
-                   zToFeaturesMap,
-                   zValuesWithFeatures,
-                   similarities);
+        if (! options.skipSimilarityMatrix) {
+            buildSimilarityMatrixAndGenerateResults(zValues,
+                                                    zValuesWithoutFeatures,
+                                                    similarities,
+                                                    options.getDirectoryWithZRange("similarities", zValues),
+                                                    options.concordePath);
+        }
+
+        if (! options.skipAlignedImageGeneration) {
+            alignTiles(options,
+                       zValues,
+                       sc,
+                       renderUrlFormat,
+                       zToFeaturesMap,
+                       zValuesWithFeatures,
+                       similarities);
+        }
 
         sc.stop();
 
@@ -573,12 +588,15 @@ public class LayerOrderAnalyzer {
                                                                     similarityList,
                                                                     matrixFile);
 
-            logInfo("generating TSP results for layers " + firstZ + " to " + lastZ);
+            if (concordePath != null) {
+                logInfo("generating TSP results for layers " + firstZ + " to " + lastZ);
 
 
-            TSP.generateResultFiles(ImagePlusAdapter.wrapFloat(matrixImagePlus),
-                                    concordePath,
-                                    similarityDir.getAbsolutePath());
+                TSP.generateResultFiles(ImagePlusAdapter.wrapFloat(matrixImagePlus),
+                                        concordePath,
+                                        similarityDir.getAbsolutePath());
+            }
+
         } catch (final Throwable t) {
 
             logInfo("buildSimilarityMatrixAndGenerateResults: caught exception");
