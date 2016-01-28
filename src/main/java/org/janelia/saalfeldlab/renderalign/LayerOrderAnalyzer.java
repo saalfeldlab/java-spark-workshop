@@ -265,7 +265,7 @@ public class LayerOrderAnalyzer {
                                                 options.getDirectoryWithZRange("similarities", zValues),
                                                 options.concordePath);
 
-        exportMatchesForKhaled(similarities,
+        exportMatchesForSolver(similarities,
                                zValues,
                                options.getDirectoryWithZRange("solver", zValues),
                                options.getLayerImagesDir().getAbsolutePath());
@@ -356,6 +356,7 @@ public class LayerOrderAnalyzer {
         final Map<Double, LayerFeatures> driverZtoFeaturesMap = new HashMap<>(driverFeatures.size() * 2);
         for (final LayerFeatures layerFeatures : driverFeatures) {
             if (layerFeatures.getFeatureCount() > 20) {
+                logInfo("collected " + layerFeatures.getFeatureCount() + " features for z " + layerFeatures.getZ());
                 driverZtoFeaturesMap.put(layerFeatures.getZ(), layerFeatures);
                 totalFeatureCount += layerFeatures.getFeatureCount();
             } else {
@@ -695,11 +696,21 @@ public class LayerOrderAnalyzer {
         });
     }
 
-    private static void exportMatchesForKhaled(
+    private static void exportMatchesForSolver(
             final Iterable<LayerSimilarity> similarities,
             final List<Double> zValues,
             final File solverExportDir,
-            final String montageExportPath) {
+            final String montageExportPath)
+            throws IOException {
+
+        // TODO: look here - this broke with lou's data - need to fix it
+        if (solverExportDir.exists()) {
+            Files.deleteRecursively(solverExportDir);
+        }
+
+        if (! solverExportDir.mkdir()) {
+            throw new IllegalArgumentException("failed to create " + solverExportDir.getAbsolutePath());
+        }
 
         try (final FileOutputStream fos = new FileOutputStream(new File(solverExportDir, "matches.txt"));
                 final OutputStreamWriter out = new OutputStreamWriter(fos, "UTF-8");
@@ -719,7 +730,7 @@ public class LayerOrderAnalyzer {
             out.close();
             for (final Double z : zValues) {
                 final long id = Double.doubleToLongBits(z);
-                out2.write(id + '\t' + montageExportPath + '/' + z + ".png\n");
+                out2.write(id + "\t" + montageExportPath + "/" + z + ".png\n");
             }
             out2.close();
         } catch (final IOException e) {
