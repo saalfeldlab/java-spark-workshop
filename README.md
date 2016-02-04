@@ -30,11 +30,37 @@ files when cloning a git repository. For that reason, clone this repository manu
 as a Maven project from within Eclipse.
 ***
 
-The best way of preparing Spark jobs is to use Eclipse to compile your Java code in a location that is accessible
-from a cluster node.  That way, there is no need to transfer the jar files onto the cluster and you can make sure
-you are alywas using the latest build of your software.  Before you start your cluster job, run the project as
-Maven install from within eclipse to make sure the jar is up to date. Once that is done, login to login1 and submit
-your spark job like this:
+Spark jobs can run locally, either by defining the variable `spark.master=local` for the JVM, or by setting the
+master to `"local"` in the Spark configuration within your Java program.  For the former, add `-Dspark.master=local`
+to the run configuration for your class or your java call.  For the latter, call
+```Java
+SparkConf conf = new SparkConf()
+     // set-up your config
+     .setMaster("local")
+;
+```
+In either case, `local` can be replaced by `local[<nThreads>]` or `local[*]` to specify the number of threads or use as
+many threads as there are cpus on the local machine.
+
+The best way of preparing Spark cluster jobs is to use Eclipse (or any  other appropriate Java IDE) to compile your
+Java code in a location that is accessible from a cluster node.  That way, there is no need to transfer the jar files
+onto the cluster and you can make sure you are alywas using the latest build of your software.  Before you start your
+cluster job, run the project as Maven install from within eclipse to make sure the jar is up to date.  Make sure you
+create an "uber" jar containing all dependencies as in our
+[example pom.xml](https://github.com/saalfeldlab/java-spark-workshop/blob/master/pom.xml#L49-87). For any dependency
+that is provided by the cluster, add `<scope>provided</scope>` to avoid reference clashes, e.g. for Spark:
+```XML
+  	<dependency>
+  		<groupId>org.apache.spark</groupId>
+  		<artifactId>spark-core_2.10</artifactId>
+  		<version>1.2.1</version>
+  		<scope>provided</scope>
+  	</dependency>
+```
+This may lead to failure when running your Spark job locally through your IDE (it does so for IntellJ IDEA). Thus, for
+local runs, changed the scope of these dependencies to `compile`.
+
+Once the uber jar is compiled and packaged, login to login1 and submit your spark job like this:
 ```bash
 ssh login1
 /path/to/java-spark-workshop/inflame.sh <N_NODES> /path/to/jar <class.to.be.Used> <ARGV>
