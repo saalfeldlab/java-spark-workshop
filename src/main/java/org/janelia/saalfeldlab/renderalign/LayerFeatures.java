@@ -134,8 +134,11 @@ public class LayerFeatures implements Serializable {
      *
      * @param  force if true, montage will be re-rendered even if a
      *               cached version already exists on disk.
+     *
+     * @throws IllegalStateException
+     *   if a previously saved montage file cannot be loaded from disk.
      */
-    public BufferedImage loadMontage(final boolean force) {
+    public BufferedImage loadMontage(final boolean force) throws IllegalStateException {
 
         LOG.info("loadMontage: entry, z=" + z);
 
@@ -179,6 +182,11 @@ public class LayerFeatures implements Serializable {
         } else {
 
             final ImagePlus ip = Utils.openImagePlus(montageFile.getAbsolutePath());
+
+            if (ip == null) {
+                throw new IllegalStateException("failed to create ImagePlus from " + montageFile.getAbsolutePath());
+            }
+
             montageImage = ip.getBufferedImage();
             LOG.info("loadMontage: loaded " + montageFile.getAbsolutePath());
 
