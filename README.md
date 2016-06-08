@@ -13,6 +13,8 @@ from the ease of use of Spark for large-scale projects.
 
 If you want to chat about Spark at Janelia or ever have questions, we maintain a [chatroom](https://gitter.im/freeman-lab/spark-janelia) and you can usually find at least some of us in there!
 
+**Note:** The chat is currently offline but might be back as a private chat in the future.
+
 ## Prerequisites
 
 For the tutorial, please bring and prepare the following:
