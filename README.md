@@ -60,12 +60,12 @@ that is provided by the cluster, add `<scope>provided</scope>` to avoid referenc
   	</dependency>
 ```
 This may lead to failure when running your Spark job locally through your IDE (it does so for IntellJ IDEA). Thus, for
-local runs, changed the scope of these dependencies to `compile`.
+local runs, change the scope of these dependencies to `compile`.
 
 Once the uber jar is compiled and packaged, login to login1 and submit your spark job like this:
 ```bash
 ssh login1
-/path/to/java-spark-workshop/inflame.sh <N_NODES> /path/to/jar <class.to.be.Used> <ARGV>
+/path/to/java-spark-workshop/flintstone/flintstone.sh <MASTER_JOB_ID|N_NODES> /path/to/jar <class.to.be.Used> <ARGV>
 qstat
 ```
 `qstat` will give you the `<job-id>` for looking up the log file and the `<spark-master>`.  You can check the
@@ -73,17 +73,26 @@ status of your Spark job through the webinterface at `<spark-master>:8080`. Any 
 will be written to `~/.sparklogs/qsub-argument-wrap-script.sh.o<job-id>`.
 
 ### How to run an example
-To run the example job (Sum of integers from 1 to N), after compiling (using Maven install inside Eclipse) the
-project, do:
+To run an example job (here: Sum of integers from 1 to N), after compiling (using Maven install inside Eclipse) the
+project, run the appropriate `.sh` script in the project's root directory:
 ```bash
 ssh login1
 /path/to/java-spark-workshop/example-sum-of-integers.sh
 qstat
-sed -r 's/^M/\n/g' ~/.sparklogs/qsub-argument-wrap-script.sh.o<job-id> | less
+sed -r 's/^M/\n/g' ~/.sparklogs/org.janelia.workshop.spark.IntegerSum.o<job-id> | less
 ```
-The last line converts `^M` to newlines and pipes the output to less for viewing. The expected result of the
-computation is `N*(N+1)/2`. Change the value of `N` inside `example-sum-of-integers.sh` and compare with the
-result.
+The last line converts `^M` to newlines using `sed` and pipes the output to `less` for viewing. The expected result
+of the computation is `N*(N+1)/2`. Change the value of `N` inside `example-sum-of-integers.sh` and compare with the
+expected result.
+
+For a detailed usage message for flintstone, run
+```bash
+/path/to/java-spark-workshop/flintstone/flintstone.sh
+```
+or for detailed info on Spark master and worker management, run
+```bash
+/usr/local/python-2.7.6/bin/python /usr/local/spark-versions/bin/spark-deploy.py -h
+```
 
 ## Example Projects
  - *org.janelia.workshop.spark.IntegerSum*
