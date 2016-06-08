@@ -1,7 +1,11 @@
 # THIS WILL WRITE INTO $HOME/jsw-output
 
-INFLAME=$PWD/inflame.sh
-JAR=$PWD/target/java-spark-workshop-0.0.1-SNAPSHOT.jar # this jar must be accessible from the cluster
+OWN_DIR=`dirname "${BASH_SOURCE[0]}"`
+ABS_DIR=`readlink -f "$OWN_DIR"`
+
+
+FLINTSTONE=$ABS_DIR/flintstone/flintstone.sh
+JAR=$ABS_DIR/target/java-spark-workshop-0.0.1-SNAPSHOT.jar # this jar must be accessible from the cluster
 CLASS=org.janelia.workshop.spark.InjectionRendering
 N_NODES=5
 
@@ -17,4 +21,4 @@ ARGV="-f $INPUT_FILE -F -o $OUTPUT_FORMAT -m $MIN -M $MAX -c $TRANSFORM -k $K -n
 
 mkdir -p $OUTPUT_DIR
 
-$INFLAME $N_NODES $JAR $CLASS $ARGV
+TERMINATE=1 $FLINTSTONE $N_NODES $JAR $CLASS $ARGV
