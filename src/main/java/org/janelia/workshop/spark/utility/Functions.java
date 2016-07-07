@@ -82,9 +82,6 @@ public static class Add implements PairFunction< Tuple2< Integer, Double >, Inte
 	private static final long serialVersionUID = 6350599396357700077L;
 		private final double summand;
 
-		/**
-		 * @param scale
-		 */
 		public Add(double summand) {
 			super();
 			this.summand = summand;
@@ -523,6 +520,24 @@ public static class Add implements PairFunction< Tuple2< Integer, Double >, Inte
 			return new Tuple2< Tuple2< Integer, Integer >, Double >( indexTuple, similarity );
 		}
 		
+	}
+
+
+	/**
+	 *
+	 * rdd in:  ( K -> V )
+	 * rdd out: ( V -> K )
+	 *
+	 * @param <K>
+	 * @param <V>
+	 */
+	public static class SwapKeyValue< K, V> implements PairFunction<Tuple2<K, V>, V, K >
+	{
+		private static final long serialVersionUID = -4173593608656179460L;
+
+		public Tuple2<V, K> call(Tuple2<K, V> t) throws Exception {
+			return Util.tuple( t._2(), t._1() );
+		}
 	}
 	
 }

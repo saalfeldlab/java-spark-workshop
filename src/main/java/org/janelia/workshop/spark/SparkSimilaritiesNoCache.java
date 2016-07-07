@@ -3,30 +3,30 @@ package org.janelia.workshop.spark;
 import ij.ImagePlus;
 import ij.io.FileSaver;
 import ij.process.FloatProcessor;
-
-import java.io.File;
-import java.io.IOException;
-import java.io.Serializable;
-import java.util.*;
-
+import mpicbg.trakem2.util.Downsampler;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.PairFunction;
 import org.janelia.workshop.spark.utility.FloatProcessorInfo;
-import org.janelia.workshop.spark.utility.Functions;
+import org.janelia.workshop.spark.utility.NCC;
+import org.janelia.workshop.spark.utility.Util;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
-
 import scala.Tuple2;
-import scala.collection.mutable.WrappedArray$;
-import scala.reflect.ClassTag$;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
 
 /**
  * @author Philipp Hanslovsky <hanslovskyp@janelia.hhmi.org>
  *
  */
-public class SparkSimilarities {
+public class SparkSimilaritiesNoCache {
 	
 	
 	public static class Options { 
@@ -114,7 +114,51 @@ public class SparkSimilarities {
 		}
 		
 	}
-	
+
+	public static class ReadFiles implements PairFunction<Tuple2<Tuple2<Integer, Integer>, Tuple2<String, String>>, Tuple2<Integer, Integer>, Tuple2<FloatProcessorInfo, FloatProcessorInfo>> {
+		public Tuple2<Tuple2<Integer, Integer>, Tuple2<FloatProcessorInfo, FloatProcessorInfo>> call(
+				Tuple2<Tuple2<Integer, Integer>, Tuple2<String, String>> t) throws Exception {
+			Tuple2<String, String> fns = t._2();
+			FloatProcessorInfo fp1 = new FloatProcessorInfo(new ImagePlus(fns._1()).getProcessor().convertToFloatProcessor());
+			FloatProcessorInfo fp2 = new FloatProcessorInfo(new ImagePlus(fns._1()).getProcessor().convertToFloatProcessor());
+			return Util.tuple(t._1(), Util.tuple(fp1, fp2));
+		}
+	}
+
+	public static class DownsampleAndIgnoreZeros implements PairFunction<Tuple2<Tuple2<Integer, Integer>, Tuple2<FloatProcessorInfo, FloatProcessorInfo>>, Tuple2<Integer, Integer>, Tuple2<FloatProcessorInfo, FloatProcessorInfo>> {
+
+		private final int sampleScale;
+
+		public DownsampleAndIgnoreZeros(int sampleScale) {
+			this.sampleScale = sampleScale;
+		}
+
+		public Tuple2<Tuple2<Integer, Integer>, Tuple2<FloatProcessorInfo, FloatProcessorInfo>> call(
+				Tuple2<Tuple2<Integer, Integer>, Tuple2<FloatProcessorInfo, FloatProcessorInfo>> t) throws Exception {
+			Tuple2<FloatProcessorInfo, FloatProcessorInfo> fps = t._2();
+			FloatProcessor fp1 = (FloatProcessor) Downsampler.downsampleImageProcessor(fps._1().toFloatProcessor(), sampleScale);
+			FloatProcessor fp2 = (FloatProcessor) Downsampler.downsampleImageProcessor(fps._2().toFloatProcessor(), sampleScale);
+			FloatProcessorInfo fpi1 = new FloatProcessorInfo(fp1);
+			FloatProcessorInfo fpi2 = new FloatProcessorInfo(fp2);
+			float[] p1 = fpi1.getPixels();
+			float[] p2 = fpi2.getPixels();
+			for (int i = 0; i < p1.length; ++i) {
+				if (p1[i] == 0.0)
+					p1[i] = Float.NaN;
+
+				if (p2[i] == 0.0)
+					p2[i] = Float.NaN;
+			}
+			return Util.tuple(t._1(), Util.tuple(fpi1, fpi2));
+		}
+	}
+
+	public static class Similarity implements PairFunction<Tuple2<Tuple2<Integer, Integer>, Tuple2<FloatProcessorInfo, FloatProcessorInfo>>, Tuple2<Integer, Integer>, Double> {
+		public Tuple2<Tuple2<Integer, Integer>, Double> call(Tuple2<Tuple2<Integer, Integer>, Tuple2<FloatProcessorInfo, FloatProcessorInfo>> t) throws Exception {
+			Tuple2<FloatProcessorInfo, FloatProcessorInfo> fps = t._2();
+			return Util.tuple(t._1(), NCC.calculate(fps._1().toFloatProcessor(), fps._2().toFloatProcessor()));
+		}
+	}
 	
 	public static void run(String[] args) throws IOException {
 		
@@ -122,55 +166,25 @@ public class SparkSimilarities {
 		if ( o.isParsedSuccessfully() ) {
 
 //			Class[] classesToBeRegistered = {
-//					WrappedArray$.class,
 //					FloatProcessorInfo.class,
-//					Object[].class,
-//					ClassTag$.class
 //			};
 //			String classesToBeRegisteredString = classesToBeRegistered.length > 0 ? classesToBeRegistered[0].toString() : "";
-
+//
 //			for ( int i = 1; i < classesToBeRegistered.length; ++i )
 //				classesToBeRegisteredString += "," + classesToBeRegistered[i].toString();
-
-
-			final SparkConf conf = new SparkConf()
+		
+			final SparkConf conf      = new SparkConf()
 					.setAppName("Similarity Matrix calculation")
 					.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 					// Now it's 24 Mb of buffer by default instead of 0.064 Mb
-					.set("spark.kryo.registrationRequired", "true")
-					.set("spark.kryoserializer.buffer.mb", "128")
+//					.set("spark.kryo.registrationRequired", "true")
+					.set("spark.kryoserializer.buffer.mb","128")
 					.set("spark.kryo.classesToRegister", "scala.collection.mutable.WrappedArray$ofRef" +
-//							",java.lang.Class.class" +
-//							",scala.reflect.ClassTag$$anon$1" +
-							",org.janelia.workshop.spark.utility.FloatProcessorInfo") // classesToBeRegisteredString );
+							"org.janelia.workshop.spark.utility.FloatProcessorInfo")
 					;
-//			conf.registerKryoClasses( classesToBeRegistered );
-			final JavaSparkContext sc = new JavaSparkContext(conf);
-
+	        final JavaSparkContext sc = new JavaSparkContext(conf);
 
 //			conf.registerKryoClasses( classesToBeRegistered );
-//
-//			System.out.println( Arrays.toString( classesToBeRegistered ) );
-//			System.out.println( classesToBeRegisteredString );
-
-			conf.registerKryoClasses(new Class[]{
-					FloatProcessorInfo.class,
-			});
-
-			String[] keys = {
-					"spark.executor.memory",
-					"spark.eventLog.enabled",
-					"spark.serializer"
-			};
-
-			for (String k : keys)
-			{
-				try {
-					System.out.println(k + " " + conf.get(k));
-				} catch (NoSuchElementException e) {
-					e.printStackTrace();
-				}
-			}
 	        
 	        final int start        = o.getMinimum();
 	        final int stop         = o.getMaximum();
@@ -198,60 +212,27 @@ public class SparkSimilarities {
 	        		filenames.add( String.format( format, s ) );
 	        }
 	        
-	        ArrayList< Tuple2< Integer, String > > filenamesWithIndices = new ArrayList< Tuple2< Integer, String > >();
+	        ArrayList< Tuple2< Tuple2< Integer, Integer >, Tuple2< String, String > > > filenamePairsWithIndexPairs =
+					new ArrayList<Tuple2<Tuple2<Integer, Integer>, Tuple2<String, String>>>();
 	        for ( int i = 0;  i < size; ++i )
-	        	filenamesWithIndices.add( new Tuple2<Integer, String>( i, filenames.get( i ) ) );
-	        
-//	        for ( Tuple2<Integer, String> fwi : filenamesWithIndices )
-//	        	System.out.println( fwi._1() + " " + fwi._2() );
-	        
-	        
+				for ( int k = i + 1; k < size && k - i <= range; ++k ) {
+					System.out.println( i + " " + k + " " + size + " " + range + " " + filenames.size() );
+					filenamePairsWithIndexPairs.add(Util.tuple(Util.tuple(i, k), Util.tuple(filenames.get(i), filenames.get(k))));//new Tuple2<Integer, String>( i, filenames.get( i ) ) );
+				}
+
 	        System.out.println( String.format( "Processing %d filenames with range=%d and defaultParallelism=%d.", filenames.size(), range, sc.defaultParallelism() ) );
-	        
-//	        for ( Tuple2<Integer, String> fnwi : filenamesWithIndices )
-//	        	System.out.println( fnwi );
 
-			double memoryPerCpu = 80 * 1e9 / 16; /* 80 gb for 16 cores */
-			ImagePlus dummy = new ImagePlus(filenamesWithIndices.get(0)._2());
-			double scaleFactor = Math.pow(2, sampleScale) * Float.SIZE / Byte.SIZE;
-			double imageSize = dummy.getWidth() / scaleFactor * dummy.getHeight() * scaleFactor;
-			dummy.close();
-			int numberOfInitialPartitions = 16 * (int) (imageSize * filenamesWithIndices.size() / memoryPerCpu) + 1;
+			JavaPairRDD<Tuple2<Integer, Integer>, Tuple2<FloatProcessorInfo, FloatProcessorInfo>> filePairs = sc
+					.parallelizePairs(filenamePairsWithIndexPairs)
+					.mapToPair( new ReadFiles() )
+					.mapToPair( new DownsampleAndIgnoreZeros( sampleScale ) );
 
-			numberOfInitialPartitions = (int) Math.sqrt( range * size );
-			numberOfInitialPartitions = (int) Math.sqrt( 3*sc.defaultParallelism() );
-
-			System.out.println( "Number of initial partitions: " + numberOfInitialPartitions );
-//			System.exit( 3 );
-
-			long tInit = System.currentTimeMillis();
-			final JavaPairRDD<Integer, String> filenamesRDD            = sc.parallelizePairs( filenamesWithIndices, numberOfInitialPartitions );//.sortByKey();
-			final JavaPairRDD<Integer, FloatProcessorInfo> filesRDD    = filenamesRDD.mapToPair( new Functions.LoadFile( ) )
-					.mapToPair( new Functions.ReplaceValue( 0.0f, Float.NaN ) )
-					.mapToPair( new Functions.DownSample( sampleScale ) )
-					.cache();
-			long fileCount = filesRDD.count();
-			Tuple2<Integer, FloatProcessorInfo> first = filesRDD.first();
-			System.out.println( "Files count: " + fileCount + " " + first._2().getWidth() + "x" + first._2().getHeight() );
-
-			JavaPairRDD<Tuple2<Integer, FloatProcessorInfo>, Tuple2<Integer, FloatProcessorInfo>> pairs = filesRDD
-					.cartesian( filesRDD )
-					.filter( new Functions.RangeFilter( range ) )
-					.cache()
-					;
-
-			long pairsCount = pairs.count();
-			System.out.println( "Pairs count: " + pairsCount + ", pairs partitions: " + pairs.getNumPartitions() );
-
-			JavaPairRDD<Tuple2<Integer, Integer>, Double> similarities = pairs.mapToPair(new Functions.PairwiseSimilarity());
+			JavaPairRDD<Tuple2<Integer, Integer>, Double> similarities = filePairs.mapToPair(new Similarity() );
 			
-			System.out.println( "Number of similarities partitions: " + similarities.getNumPartitions() );
         
 			long t0                                               = System.currentTimeMillis();
 	        List<Tuple2<Tuple2<Integer, Integer>, Double>> values = similarities.collect();
 	        long sparkTime                                        = System.currentTimeMillis();
-	        
-	        
 	        
 	        FloatProcessor matrix = new FloatProcessor( size, size );
 	        matrix.add( Double.NaN );
@@ -270,8 +251,7 @@ public class SparkSimilarities {
 	        long matrixTime = System.currentTimeMillis();
 	        
 	        new FileSaver( new ImagePlus( "", matrix ) ).saveAsTiff( output );
-
-			System.out.println( String.format( "%-50s% 20dms", "Image pair loading time:", ( t0 - tInit ) ) );
+	        
 	        System.out.println( String.format( "%-50s% 20dms", "Spark computation time:", ( sparkTime - t0 ) ) );
 	        System.out.println( String.format( "%-50s% 20dms", "Matrix filling time:", ( matrixTime - sparkTime ) ) );
 	        
@@ -281,6 +261,7 @@ public class SparkSimilarities {
 
 	public static void main(String[] args) throws IOException {
 		run(args);
+
 	}
 
 }
