@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import mpicbg.imagefeatures.Feature;
 import mpicbg.imagefeatures.FloatArray2DSIFT;
 
 import org.junit.After;
@@ -58,7 +59,7 @@ public class LayerOrderAnalyzerTest {
             zValues.add(z);
             final File montageFile = new File(getMontageFilePath(z));
             final File featureListFile = new File(getFeatureListFilePath(z));
-            final LayerFeatures layerFeatures = new LayerFeatures(z, null, null, montageFile, featureListFile);
+            final LayerFeatures layerFeatures = new LayerFeatures(z, null, null, montageFile, featureListFile, null);
             layerFeatures.loadMontageAndExtractFeatures(false,
                                                         new FloatArray2DSIFT.Param(),
                                                         0.5,
@@ -77,6 +78,54 @@ public class LayerOrderAnalyzerTest {
             }
         }
 
+    }
+
+    @Test
+    public void testClip()
+            throws IOException {
+
+        final Double z = 1.0;
+        //final String renderUrl =
+                //"http://tem-services.int.janelia.org:8080/render-ws/v1/owner/flyTEM/project/FAFB00/stack/v13_montage/z/" +
+                //z + "/render-parameters?scale=0.8";
+
+        final String renderUrl = "http://renderer-dev:8080/render-ws/v1/owner/flyTEM/project/FAFB00/" +
+                                 "stack/v12_acquire_merged/tile/150311140241101032.3334.0" +
+                                 "/render-parameters?excludeMask=true&normalizeForMatching=true&width=2760&height=2330&scale=0.03";
+
+        final LayerFeatures layerFeatures = new LayerFeatures(1.0, renderUrl, null, null, null, null);
+        final List<Feature> featureList =
+                layerFeatures.loadMontageAndExtractFeatures(false,
+                                                            new FloatArray2DSIFT.Param(),
+                                                            0.5,
+                                                            0.85,
+                                                            true);
+        System.out.println(layerFeatures);
+        printFeatureList("no clip", featureList);
+
+        final LayerFeatures clippedLayerFeatures = new LayerFeatures(1.0, renderUrl, null, null, null, 0.6);
+        final List<Feature> clippedFeatureList =
+                clippedLayerFeatures.loadMontageAndExtractFeatures(false,
+                                                                   new FloatArray2DSIFT.Param(),
+                                                                   0.5,
+                                                                   0.85,
+                                                                   true);
+
+        System.out.println(clippedLayerFeatures);
+        printFeatureList("with clip", clippedFeatureList);
+    }
+
+    private void printFeatureList(final String context,
+                                  final List<Feature> featureList) {
+        int count = 0;
+        for (final Feature feature : featureList) {
+            System.out.println(context + ": (" + feature.location[0] + ", " + feature.location[1] + ")");
+            count++;
+
+            if (count > 20) {
+                break;
+            }
+        }
     }
 
     private static String getMontageFilePath(Double z) {

@@ -45,9 +45,11 @@ public class LayerFeatures implements Serializable {
     private String boundsUrlString;
     private File montageFile;
     private File featureListFile;
+    private Double clipWidthFactor;
 
     // derived data
     private Rectangle2D.Double bounds;
+    private Double featureXOffset;
     private Integer featureCount;
     private String processingMessages;
 
@@ -55,12 +57,14 @@ public class LayerFeatures implements Serializable {
                          final String renderParametersUrlString,
                          final String boundsUrlString,
                          final File montageFile,
-                         final File featureListFile) {
+                         final File featureListFile,
+                         final Double clipWidthFactor) {
         this.z = z;
         this.renderParametersUrlString = renderParametersUrlString;
         this.boundsUrlString = boundsUrlString;
         this.montageFile = montageFile;
         this.featureListFile = featureListFile;
+        this.clipWidthFactor = clipWidthFactor;
     }
 
     public Double getZ() {
@@ -90,7 +94,9 @@ public class LayerFeatures implements Serializable {
                ", boundsUrlString='" + boundsUrlString + '\'' +
                ", montageFile=" + montageFile +
                ", featureListFile=" + featureListFile +
+               ", clipWidthFactor=" + clipWidthFactor +
                ", bounds=" + bounds +
+               ", featureXOffset=" + featureXOffset +
                ", featureCount=" + featureCount +
                ", processingMessages='" + processingMessages + '\'' +
                '}';
@@ -118,7 +124,7 @@ public class LayerFeatures implements Serializable {
         } else {
             featureList = readFeatureListFromFile(featureListFile);
             featureCount = featureList.size();
-            bounds = loadBounds(boundsUrlString);
+            setBounds(boundsUrlString);
         }
 
         return featureList;
@@ -152,11 +158,17 @@ public class LayerFeatures implements Serializable {
 
             LOG.info("loadMontage: retrieved " + renderParametersUrlString);
 
-            bounds = new Rectangle2D.Double(
-            		renderParameters.getX(),
-            		renderParameters.getY(),
-            		renderParameters.getWidth(),
-            		renderParameters.getHeight());
+            setBounds(renderParameters.getX(),
+                      renderParameters.getY(),
+                      renderParameters.getWidth(),
+                      renderParameters.getHeight(),
+                      renderParameters.getScale());
+
+            // reset renderParameters bounding box in case original bounds were clipped
+            renderParameters.x = bounds.x;
+            renderParameters.y = bounds.y;
+            renderParameters.width = (int) bounds.width;
+            renderParameters.height = (int) bounds.height;
 
             montageImage = renderParameters.openTargetImage();
             final ByteProcessor ip = new ByteProcessor(montageImage.getWidth(), montageImage.getHeight());
@@ -191,7 +203,7 @@ public class LayerFeatures implements Serializable {
             LOG.info("loadMontage: loaded " + montageFile.getAbsolutePath());
 
             if (boundsUrlString != null) {
-                bounds = loadBounds(boundsUrlString);
+                setBounds(boundsUrlString);
             }
         }
 
@@ -262,6 +274,13 @@ public class LayerFeatures implements Serializable {
             }
 
             this.processingMessages = sb.toString();
+
+        } else if (clipWidthFactor != null) {
+
+            for (final Feature feature : featureList) {
+                feature.location[0] = feature.location[0] + featureXOffset;
+            }
+
         }
 
         LOG.info("extractFeatures: exit, extracted " + featureList.size() + " features for z=" + z +
@@ -338,7 +357,8 @@ public class LayerFeatures implements Serializable {
                                                               renderParametersUrlString,
                                                               boundsUrlString,
                                                               montageFile,
-                                                              featureListFile);
+                                                              featureListFile,
+                                                              null);
         final List<Feature> featureList;
         try {
             featureList = layerFeatures.loadMontageAndExtractFeatures(forceMontageRendering,
@@ -353,9 +373,27 @@ public class LayerFeatures implements Serializable {
 
     }
 
-    private static Rectangle2D.Double loadBounds(final String url) {
+    private void setBounds(final double x,
+                           final double y,
+                           final double width,
+                           final double height,
+                           final Double scale) {
 
-        Bounds bounds;
+        if ((clipWidthFactor == null) || (scale == null)) {
+            bounds = new Rectangle2D.Double(x, y, width, height);
+        } else {
+            final double widthAfterClip = clipWidthFactor * width;
+            final double clippedWidth = width - widthAfterClip;
+            final double clipXOffset = clippedWidth / 2.0;
+            final double xAfterClip = x + clipXOffset;
+            bounds = new Rectangle2D.Double(xAfterClip, y, widthAfterClip, height);
+            featureXOffset = clipXOffset * scale;
+        }
+    }
+
+    private void setBounds(final String url) {
+
+        Bounds renderBounds;
         InputStream urlStream = null;
         try {
             try {
@@ -365,7 +403,7 @@ public class LayerFeatures implements Serializable {
                 throw new IllegalArgumentException("failed to load bounds from " + url, t);
             }
 
-            bounds = new Gson().fromJson(new InputStreamReader(urlStream), Bounds.class);
+            renderBounds = new Gson().fromJson(new InputStreamReader(urlStream), Bounds.class);
 
         } finally {
             if (urlStream != null) {
@@ -377,15 +415,20 @@ public class LayerFeatures implements Serializable {
             }
         }
 
-        final Rectangle2D.Double boundingBox = new Rectangle2D.Double(
-                bounds.getMinX(),
-                bounds.getMinY(),
-                bounds.getMaxX() - bounds.getMinX() + 1,
-                bounds.getMaxY() - bounds.getMinY() + 1);
+        if (clipWidthFactor != null) {
+            throw new IllegalStateException(
+                    "The --clipWidthFactor parameter cannot be used when loading pre-generated scapes from disk.  " +
+                    "You can fix this by either removing the scapes (e.g. rm " + montageFile + ") " +
+                    "or by using the --forceMontageRendering parameter.");
+        }
 
-        LOG.info("loadBounds: loaded " + boundingBox + " from " + url);
+        setBounds(renderBounds.getMinX(),
+                  renderBounds.getMinY(),
+                  renderBounds.getMaxX() - renderBounds.getMinX() + 1,
+                  renderBounds.getMaxY() - renderBounds.getMinY() + 1,
+                  null);
 
-        return boundingBox;
+        LOG.info("loadBounds: loaded " + bounds + " from " + url);
     }
 
 

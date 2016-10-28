@@ -105,6 +105,14 @@ public class LayerOrderAnalyzer {
                 usage = "Last z value, default last in stack.")
         private Double lastZ = Double.NaN;
 
+        @Option(name = "-ah", aliases = {"--skipIntensityFilter"}, required = false,
+                usage = "Skip application of intensity filter to rendered scapes.")
+        private boolean skipIntensityFilter = false;
+
+        @Option(name = "-ai", aliases = {"--clipWidthFactor"}, required = false,
+                usage = "If specified, rendered scapes will have left and right edges evenly clipped so that the rendered width is this factor times the actual width.")
+        private Double clipWidthFactor = null;
+
         @Option(name = "-f", aliases = {"--forceMontageRendering"}, required = false,
                 usage = "Regenerate montage image even if it exists.")
         private boolean forceMontageRendering = false;
@@ -166,6 +174,8 @@ public class LayerOrderAnalyzer {
                    ", outputPath='" + outputPath + '\'' +
                    ", firstZ=" + firstZ +
                    ", lastZ=" + lastZ +
+                   ", skipIntensityFilter=" + skipIntensityFilter +
+                   ", clipWidthFactor=" + clipWidthFactor +
                    ", range=" + range +
                    ", forceMontageRendering=" + forceMontageRendering +
                    ", forceFeatureExtraction=" + forceFeatureExtraction +
@@ -246,8 +256,9 @@ public class LayerOrderAnalyzer {
 
         final JavaSparkContext sc = new JavaSparkContext(conf);
 
-        final String renderUrlFormat = baseUrlString + "/z/%f/render-parameters" +
-                                       "?scale=" + options.scale + "&filter=true";
+       final String filterParameter = options.skipIntensityFilter ? "" : "&filter=true";
+       final String renderUrlFormat = baseUrlString + "/z/%f/render-parameters" +
+                                       "?scale=" + options.scale + filterParameter;
 
         final String boundsUrlFormat = baseUrlString + "/z/%f/bounds";
         final Map<Double, LayerFeatures> zToFeaturesMap = calculateFeatures(sc,
@@ -353,7 +364,8 @@ public class LayerOrderAnalyzer {
                                                                       String.format(renderUrlFormat, z),
                                                                       String.format(boundsUrlFormat, z),
                                                                       options.getMontageFile(z),
-                                                                      options.getFeatureListFile(z));
+                                                                      options.getFeatureListFile(z),
+                                                                      options.clipWidthFactor);
                 layerFeatures.loadMontageAndExtractFeatures(options.forceMontageRendering,
                                                             siftParameters,
                                                             options.minScale,
