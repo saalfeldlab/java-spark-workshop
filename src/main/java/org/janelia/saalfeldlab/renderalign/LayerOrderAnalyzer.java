@@ -122,6 +122,10 @@ public class LayerOrderAnalyzer {
                 usage = "Regenerate montage image even if it exists.")
         private boolean forceMontageRendering = false;
 
+        @Option(name = "-f", aliases = {"--memoryOnlyMontageRendering"}, required = false,
+                usage = "Skip saving rendered montages to disk.")
+        private boolean memoryOnlyMontageRendering = false;
+
         @Option(name = "-F", aliases = {"--forceFeatureExtraction"}, required = false,
                 usage = "Extract features even if they were already extracted.")
         private boolean forceFeatureExtraction = false;
@@ -207,11 +211,20 @@ public class LayerOrderAnalyzer {
                    ", clipWidthFactor=" + clipWidthFactor +
                    ", range=" + range +
                    ", forceMontageRendering=" + forceMontageRendering +
+                   ", memoryOnlyMontageRendering=" + memoryOnlyMontageRendering +
                    ", forceFeatureExtraction=" + forceFeatureExtraction +
                    ", fdSize=" + fdSize +
                    ", minSIFTScale=" + minScale +
                    ", maxSIFTScale=" + maxScale +
                    ", steps=" + steps +
+                   ", matchRod=" + matchRod +
+                   ", matchModelType=" + matchModelType +
+                   ", matchIterations=" + matchIterations +
+                   ", matchMaxEpsilon=" + matchMaxEpsilon +
+                   ", matchMinInlierRatio=" + matchMinInlierRatio +
+                   ", matchMinNumInliers=" + matchMinNumInliers +
+                   ", matchMaxTrust=" + matchMaxTrust +
+                   ", matchMaxNumInliers=" + matchMaxNumInliers +
                    ", skipSimilarityMatrix=" + skipSimilarityMatrix +
                    ", skipAlignedImageGeneration=" + skipAlignedImageGeneration +
                    '}';
@@ -226,7 +239,7 @@ public class LayerOrderAnalyzer {
         }
 
         public File getMontageFile(final Double z) {
-            return new File(getLayerImagesDir(), z + "." + outputFormat);
+            return memoryOnlyMontageRendering ? null : new File(getLayerImagesDir(), z + "." + outputFormat);
         }
 
         public File getFeatureListDir() {
