@@ -55,6 +55,8 @@ import org.janelia.alignment.Render;
 import org.janelia.alignment.RenderParameters;
 import org.janelia.alignment.Utils;
 import org.janelia.alignment.json.JsonUtils;
+import org.janelia.alignment.match.CanvasFeatureMatcher;
+import org.janelia.alignment.match.ModelType;
 import org.janelia.alignment.spec.TileSpec;
 import org.janelia.alignment.spec.TransformSpec;
 import org.janelia.alignment.util.ImageProcessorCache;
@@ -92,6 +94,9 @@ public class LayerOrderAnalyzer {
 
         @Option(name = "-o", aliases = {"--outputPath"}, required = true, usage = "Output path.")
         private String outputPath = "/tmp/";
+
+        @Option(name = "-of", aliases = {"--outputFormat"}, required = false, usage = "Output file format.")
+        private String outputFormat = "png";
 
         @Option(name = "-r", aliases = {"--range"}, required = false,
                 usage = "Range (maximum distance) for similarity comparisons.")
@@ -136,6 +141,30 @@ public class LayerOrderAnalyzer {
         @Option(name = "-ae", aliases = {"--steps"}, required = false,
                 usage = "SIFT steps per scale octave.")
         private Integer steps = 3;
+
+        @Option(name = "-ma", aliases = {"--matchRod"}, usage = "Ratio of distances for matches", required = false)
+        private Float matchRod = 0.92f;
+
+        @Option(name = "-mb", aliases = {"--matchModelType"}, usage = "Type of model for match filtering", required = false)
+        private ModelType matchModelType = ModelType.AFFINE;
+
+        @Option(name = "-mc", aliases = {"--matchIterations"}, usage = "Match filter iterations", required = false)
+        private Integer matchIterations = 1000;
+
+        @Option(name = "-md", aliases = {"--matchMaxEpsilon"}, usage = "Minimal allowed transfer error for match filtering", required = false)
+        private Float matchMaxEpsilon = 20.0f;
+
+        @Option(name = "-me", aliases = {"--matchMinInlierRatio"}, usage = "Minimal ratio of inliers to candidates for match filtering", required = false)
+        private Float matchMinInlierRatio = 0.0f;
+
+        @Option(name = "-mf", aliases = {"--matchMinNumInliers"}, usage = "Minimal absolute number of inliers for match filtering", required = false)
+        private Integer matchMinNumInliers = 4;
+
+        @Option(name = "-mg", aliases = {"--matchMaxTrust"}, usage = "Reject match candidates with a cost larger than maxTrust * median cost", required = false)
+        private Double matchMaxTrust = 3.0;
+
+        @Option(name = "-mh", aliases = {"--matchMaxNumInliers"}, usage = "Maximum number of inliers for match filtering", required = false)
+        private Integer matchMaxNumInliers = null;
 
         @Option(name = "-af", aliases = {"--skipSimilarityMatrix"}, required = false,
                 usage = "Skip building a similarity matrix.")
@@ -197,7 +226,7 @@ public class LayerOrderAnalyzer {
         }
 
         public File getMontageFile(final Double z) {
-            return new File(getLayerImagesDir(), z + ".png");
+            return new File(getLayerImagesDir(), z + "." + outputFormat);
         }
 
         public File getFeatureListDir() {
@@ -278,10 +307,12 @@ public class LayerOrderAnalyzer {
         final List<Tuple2<Double, Double>> layerPairs = calculateLayerPairs(zValuesWithFeatures,
                                                                             options.range);
         final List<LayerSimilarity> similarities = calculateSimilarities(sc,
+                                                                         options,
                                                                          zToFeaturesMap,
                                                                          layerPairs);
 
-        exportMatchesForSolver(similarities,
+        exportMatchesForSolver(options,
+                               similarities,
                                zValues,
                                options.getDirectoryWithZRange("solver", zValues),
                                options.getLayerImagesDir().getAbsolutePath());
@@ -438,6 +469,7 @@ public class LayerOrderAnalyzer {
     }
 
     private static List<LayerSimilarity> calculateSimilarities(final JavaSparkContext sc,
+                                                               final Options options,
                                                                final Map<Double, LayerFeatures> zToFeaturesMap,
                                                                final List<Tuple2<Double, Double>> zPairs) {
 
@@ -445,6 +477,15 @@ public class LayerOrderAnalyzer {
         final Broadcast<Map<Double, LayerFeatures>> broadcastZToFeaturesMap = sc.broadcast(zToFeaturesMap);
 
         final JavaRDD<Tuple2<Double, Double>> rddZPairs = sc.parallelize(zPairs);
+        final CanvasFeatureMatcher canvasFeatureMatcher = new CanvasFeatureMatcher(options.matchRod,
+                                                                                   options.matchModelType,
+                                                                                   options.matchIterations,
+                                                                                   options.matchMaxEpsilon,
+                                                                                   options.matchMinInlierRatio,
+                                                                                   options.matchMinNumInliers,
+                                                                                   options.matchMaxTrust,
+                                                                                   options.matchMaxNumInliers,
+                                                                                   true);
 
         final JavaRDD<LayerSimilarity> rddSimilarity = rddZPairs.map(
                 new Function<Tuple2<Double, Double>, LayerSimilarity>() {
@@ -455,7 +496,7 @@ public class LayerOrderAnalyzer {
                         final Double z1 = tuple2._1();
                         final Double z2 = tuple2._2();
                         setupExecutorLog4j("z1:" + z1 + ",z2:" + z2);
-                        final LayerSimilarity layerSimilarity = new LayerSimilarity(z1, z2);
+                        final LayerSimilarity layerSimilarity = new LayerSimilarity(z1, z2, canvasFeatureMatcher);
                         layerSimilarity.calculateInlierRatio(broadcastZToFeaturesMap.getValue());
                         return layerSimilarity;
                     }
@@ -566,6 +607,7 @@ public class LayerOrderAnalyzer {
         }
 
         final int transformedImages = renderTransformedMontages(
+                options,
                 sc,
                 zValuesWithFeatures,
                 zTransforms,
@@ -661,6 +703,7 @@ public class LayerOrderAnalyzer {
     }
 
     private static int renderTransformedMontages(
+            final Options options,
             final JavaSparkContext sc,
             final List<Double> zValues,
             final Map<Double, AffineTransform> transforms,
@@ -697,10 +740,10 @@ public class LayerOrderAnalyzer {
                 final BufferedImage montageImage = renderParameters.openTargetImage();
                 Render.render(renderParameters, montageImage, ImageProcessorCache.DISABLED_CACHE);
 
-                final File alignImageFile = new File(alignDirectory, z + ".png");
+                final File alignImageFile = new File(alignDirectory, z + "." + options.outputFormat);
                 boolean success = false;
                 try {
-                    Utils.saveImage(montageImage, alignImageFile.getAbsolutePath(), "png", true, 9);
+                    Utils.saveImage(montageImage, alignImageFile.getAbsolutePath(), options.outputFormat, true, 9);
                     success = true;
                 } catch (final Throwable t) {
                     logInfo("renderTransformedMontages: failed to save " + alignImageFile.getAbsolutePath());
@@ -727,6 +770,7 @@ public class LayerOrderAnalyzer {
     }
 
     private static void exportMatchesForSolver(
+            final Options options,
             final Iterable<LayerSimilarity> similarities,
             final List<Double> zValues,
             final File solverExportDir,
@@ -760,7 +804,7 @@ public class LayerOrderAnalyzer {
             out.close();
             for (final Double z : zValues) {
                 final long id = Double.doubleToLongBits(z);
-                out2.write(id + "\t" + montageExportPath + "/" + z + ".png\n");
+                out2.write(id + "\t" + montageExportPath + "/" + z + "." + options.outputFormat +"\n");
             }
             out2.close();
         } catch (final IOException e) {

@@ -1,21 +1,18 @@
 package org.janelia.saalfeldlab.renderalign;
 
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import javax.annotation.Nonnull;
 
-import mpicbg.ij.FeatureTransform;
 import mpicbg.imagefeatures.Feature;
-import mpicbg.models.NotEnoughDataPointsException;
 import mpicbg.models.PointMatch;
-import mpicbg.trakem2.transform.AffineModel2D;
-import mpicbg.util.Timer;
 
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+import org.janelia.alignment.match.CanvasFeatureMatchResult;
+import org.janelia.alignment.match.CanvasFeatureMatcher;
 
 /**
  * Calculates the similarity between two layers based on supplied features.
@@ -26,15 +23,15 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
 
     private Double z1;
     private Double z2;
-    private Double inlierRatio;
-    final private ArrayList<PointMatch> inliers = new ArrayList<>();
-    private boolean modelFound;
+    private CanvasFeatureMatcher canvasFeatureMatcher;
+    private CanvasFeatureMatchResult canvasFeatureMatchResult;
 
     public LayerSimilarity(final Double z1,
-                           final Double z2) {
+                           final Double z2,
+                           final CanvasFeatureMatcher canvasFeatureMatcher) {
         this.z1 = z1;
         this.z2 = z2;
-        this.inlierRatio = null;
+        this.canvasFeatureMatcher = canvasFeatureMatcher;
     }
 
     public Double getZ1() {
@@ -46,15 +43,15 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
     }
 
     public Double getInlierRatio() {
-        return inlierRatio;
+        return canvasFeatureMatchResult.getInlierRatio();
     }
 
-    public ArrayList<PointMatch> getInliers() {
-    	return inliers;
+    public List<PointMatch> getInliers() {
+    	return canvasFeatureMatchResult.getInlierPointMatchList();
     }
 
     public boolean isModelFound() {
-        return modelFound;
+        return canvasFeatureMatchResult.isModelFound();
     }
 
     @Override
@@ -85,47 +82,10 @@ public class LayerSimilarity implements Serializable, Comparable<LayerSimilarity
     public void calculateInlierRatio(final Map<Double, LayerFeatures> zToFeaturesMap)
             throws IllegalArgumentException {
 
-        LOG.info("calculateInlierRatio: entry");
-
-        final float rod = 0.92f;
-        final float maxEpsilon = 20f;
-        final float minInlierRatio = 0.0f;
-        final int minNumInliers = 10;
-
-        final AffineModel2D model = new AffineModel2D();
-
         final List<Feature> features1 = getFeatureList(z1, zToFeaturesMap);
         final List<Feature> features2 = getFeatureList(z2, zToFeaturesMap);
 
-        inlierRatio = 0.0;
-
-        final Timer timer = new Timer();
-        timer.start();
-
-        final ArrayList<PointMatch> candidates = new ArrayList<>();
-        inliers.clear();
-
-        FeatureTransform.matchFeatures(features1, features2, candidates, rod);
-
-        try {
-            modelFound = model.filterRansac(
-                    candidates,
-                    inliers,
-                    1000,
-                    maxEpsilon,
-                    minInlierRatio,
-                    minNumInliers,
-                    3);
-        } catch (final NotEnoughDataPointsException e) {
-            modelFound = false;
-        }
-
-        if (modelFound) {
-            inlierRatio = (double) inliers.size() / candidates.size();
-        }
-
-        LOG.info("calculateInlierRatio: exit, layerSimilarity=" + this +
-                 ", elapsedTime=" + (timer.stop() / 1000) + "s");
+        canvasFeatureMatchResult = canvasFeatureMatcher.deriveMatchResult(features1, features2);
     }
 
     private List<Feature> getFeatureList(final Double z,

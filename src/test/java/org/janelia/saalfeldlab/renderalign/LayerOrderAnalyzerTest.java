@@ -10,6 +10,8 @@ import java.util.Map;
 import mpicbg.imagefeatures.Feature;
 import mpicbg.imagefeatures.FloatArray2DSIFT;
 
+import org.janelia.alignment.match.CanvasFeatureMatcher;
+import org.janelia.alignment.match.ModelType;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -41,7 +43,7 @@ public class LayerOrderAnalyzerTest {
     @Test
     public void tesGetZValues() throws Exception {
         final List<Double> zValues = LayerOrderAnalyzer.getZValues(
-                "http://tem-services.int.janelia.org:8080/render-ws/v1/owner/flyTEM/project/FAFB00/stack/v8_montage");
+                "http://tem-services.int.janelia.org:8080/render-ws/v1/owner/flyTEM/project/FAFB00/stack/v13_montage");
 
         Assert.assertTrue("missing z values", zValues.size() > 10);
     }
@@ -68,11 +70,20 @@ public class LayerOrderAnalyzerTest {
             zToFeaturesMap.put(z, layerFeatures);
         }
 
+        final CanvasFeatureMatcher canvasFeatureMatcher = new CanvasFeatureMatcher(0.92f,
+                                                                                   ModelType.AFFINE,
+                                                                                   1000,
+                                                                                   20f,
+                                                                                   0.0f,
+                                                                                   10,
+                                                                                   3,
+                                                                                   null,
+                                                                                   true);
         for (int i = 0; i < n; i++) {
             final Double z1 = zValues.get(i);
             for (int k = i + 1; k < n; k++) {
                 final Double z2 = zValues.get(k);
-                final LayerSimilarity layerSimilarity = new LayerSimilarity(z1, z2);
+                final LayerSimilarity layerSimilarity = new LayerSimilarity(z1, z2, canvasFeatureMatcher);
                 layerSimilarity.calculateInlierRatio(zToFeaturesMap);
 //                System.out.println("model is " + layerSimilarity.getModel());
             }
