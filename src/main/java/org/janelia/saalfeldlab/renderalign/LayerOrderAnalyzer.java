@@ -122,7 +122,7 @@ public class LayerOrderAnalyzer {
                 usage = "Regenerate montage image even if it exists.")
         private boolean forceMontageRendering = false;
 
-        @Option(name = "-f", aliases = {"--memoryOnlyMontageRendering"}, required = false,
+        @Option(name = "-aj", aliases = {"--memoryOnlyMontageRendering"}, required = false,
                 usage = "Skip saving rendered montages to disk.")
         private boolean memoryOnlyMontageRendering = false;
 
@@ -181,6 +181,9 @@ public class LayerOrderAnalyzer {
         @Option(name = "-ag", aliases = {"--skipAlignedImageGeneration"}, required = false,
                 usage = "Skip generation of aligned layer images.")
         private boolean skipAlignedImageGeneration = false;
+
+        @Option(name = "-ak", aliases = {"--solverRegularizerModelType"}, usage = "Type of model for regularizing the alignment solution", required = false)
+        private ModelType solverRegularizerModelType = ModelType.RIGID;
 
         public Options(final String[] args) {
             final CmdLineParser parser = new CmdLineParser(this);
@@ -538,7 +541,7 @@ public class LayerOrderAnalyzer {
                     new Tile(
                             new InterpolatedAffineModel2D<>(
                                     new mpicbg.models.AffineModel2D(),
-                                    new mpicbg.models.RigidModel2D(),
+                                    options.solverRegularizerModelType.getInstance(),
                                     1.0)));
 
         for (final LayerSimilarity sim : similarities) {
