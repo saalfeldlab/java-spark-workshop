@@ -46,6 +46,7 @@ public class LayerFeatures implements Serializable {
     private File montageFile;
     private File featureListFile;
     private Double clipWidthFactor;
+    private Double clipCenterX;
 
     // derived data
     private Rectangle2D.Double bounds;
@@ -87,6 +88,10 @@ public class LayerFeatures implements Serializable {
         return processingMessages;
     }
 
+    public void setClipCenterX(final Double clipCenterX) {
+        this.clipCenterX = clipCenterX;
+    }
+
     @Override
     public String toString() {
         return "LayerFeatures{z=" + z +
@@ -95,6 +100,7 @@ public class LayerFeatures implements Serializable {
                ", montageFile=" + montageFile +
                ", featureListFile=" + featureListFile +
                ", clipWidthFactor=" + clipWidthFactor +
+               ", clipCenterX=" + clipCenterX +
                ", bounds=" + bounds +
                ", featureXOffset=" + featureXOffset +
                ", featureCount=" + featureCount +
@@ -384,7 +390,14 @@ public class LayerFeatures implements Serializable {
         } else {
             final double widthAfterClip = clipWidthFactor * width;
             final double clippedWidth = width - widthAfterClip;
-            final double clipXOffset = clippedWidth / 2.0;
+
+            double deltaX = 0.0;
+            if (clipCenterX != null) {
+                final double actualCenterX = x + (width / 2.0);
+                deltaX = clipCenterX - actualCenterX;
+            }
+
+            final double clipXOffset = (clippedWidth / 2.0) + deltaX;
             final double xAfterClip = x + clipXOffset;
             bounds = new Rectangle2D.Double(xAfterClip, y, widthAfterClip, height);
             featureXOffset = clipXOffset * scale;

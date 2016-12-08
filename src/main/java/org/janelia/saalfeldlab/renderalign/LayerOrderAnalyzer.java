@@ -14,6 +14,8 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Serializable;
 import java.net.URL;
+import java.nio.charset.Charset;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -25,6 +27,8 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import mpicbg.imagefeatures.FloatArray2DSIFT;
 import mpicbg.models.Affine2D;
@@ -117,6 +121,10 @@ public class LayerOrderAnalyzer {
         @Option(name = "-ai", aliases = {"--clipWidthFactor"}, required = false,
                 usage = "If specified, rendered scapes will have left and right edges evenly clipped so that the rendered width is this factor times the actual width.")
         private Double clipWidthFactor = null;
+
+        @Option(name = "-al", aliases = {"--clipCenterXFile"}, required = false,
+                usage = "CSV file containing z amd clipCenterX values.")
+        private String clipCenterXFile = null;
 
         @Option(name = "-f", aliases = {"--forceMontageRendering"}, required = false,
                 usage = "Regenerate montage image even if it exists.")
@@ -390,15 +398,39 @@ public class LayerOrderAnalyzer {
         return zValues;
     }
 
+    public static Map<Double, Double> loadClipCenterXValues(final String fileName)
+            throws IOException {
+        final Map<Double, Double> zToClipCenterXMap = new HashMap<>();
+        if (fileName != null) {
+            final Pattern pattern = Pattern.compile("[^,]++");
+            for (final String line : java.nio.file.Files.readAllLines(Paths.get(fileName),
+                                                                      Charset.defaultCharset())) {
+                final Matcher m = pattern.matcher(line);
+                if (m.find()) {
+                    final Double z = new Double(line.substring(m.start(), m.end()));
+                    if (m.find()) {
+                        final Double x = new Double(line.substring(m.start(), m.end()));
+                        zToClipCenterXMap.put(z, x);
+                    }
+                }
+            }
+            logInfo("loaded " + zToClipCenterXMap.size() + " values from " + fileName);
+        }
+        return zToClipCenterXMap;
+    }
+
     private static Map<Double, LayerFeatures> calculateFeatures(final JavaSparkContext sc,
                                                                 final Options options,
                                                                 final List<Double> zValues,
                                                                 final String renderUrlFormat,
-                                                                final String boundsUrlFormat) {
+                                                                final String boundsUrlFormat)
+            throws IOException {
 
         final FloatArray2DSIFT.Param siftParameters = new FloatArray2DSIFT.Param();
         siftParameters.fdSize = options.fdSize;
         siftParameters.steps = options.steps;
+
+        final Map<Double, Double> zToClipCenterXMap = loadClipCenterXValues(options.clipCenterXFile);
 
         final JavaRDD<Double> rddZ = sc.parallelize(zValues);
 
@@ -413,6 +445,12 @@ public class LayerOrderAnalyzer {
                                                                       options.getMontageFile(z),
                                                                       options.getFeatureListFile(z),
                                                                       options.clipWidthFactor);
+
+                final Double clipCenterX = zToClipCenterXMap.get(z);
+                if (clipCenterX != null) {
+                    layerFeatures.setClipCenterX(clipCenterX);
+                }
+
                 layerFeatures.loadMontageAndExtractFeatures(options.forceMontageRendering,
                                                             siftParameters,
                                                             options.minScale,
