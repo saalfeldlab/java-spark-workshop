@@ -46,11 +46,14 @@ public class LayerFeatures implements Serializable {
     private File montageFile;
     private File featureListFile;
     private Double clipWidthFactor;
+    private Double clipHeightFactor;
     private Double clipCenterX;
+    private Double clipCenterY;
 
     // derived data
     private Rectangle2D.Double bounds;
     private Double featureXOffset;
+    private Double featureYOffset;
     private Integer featureCount;
     private String processingMessages;
 
@@ -59,13 +62,15 @@ public class LayerFeatures implements Serializable {
                          final String boundsUrlString,
                          final File montageFile,
                          final File featureListFile,
-                         final Double clipWidthFactor) {
+                         final Double clipWidthFactor,
+                         final Double clipHeightFactor) {
         this.z = z;
         this.renderParametersUrlString = renderParametersUrlString;
         this.boundsUrlString = boundsUrlString;
         this.montageFile = montageFile;
         this.featureListFile = featureListFile;
         this.clipWidthFactor = clipWidthFactor;
+        this.clipHeightFactor = clipHeightFactor;
     }
 
     public Double getZ() {
@@ -88,8 +93,14 @@ public class LayerFeatures implements Serializable {
         return processingMessages;
     }
 
-    public void setClipCenterX(final Double clipCenterX) {
+    public void setClipCenter(final Double clipCenterX,
+                              final Double clipCenterY) {
         this.clipCenterX = clipCenterX;
+        this.clipCenterY = clipCenterY;
+    }
+
+    public boolean isClipped() {
+        return (clipWidthFactor != null) || (clipHeightFactor != null);
     }
 
     @Override
@@ -100,7 +111,9 @@ public class LayerFeatures implements Serializable {
                ", montageFile=" + montageFile +
                ", featureListFile=" + featureListFile +
                ", clipWidthFactor=" + clipWidthFactor +
+               ", clipHeightFactor=" + clipHeightFactor +
                ", clipCenterX=" + clipCenterX +
+               ", clipCenterY=" + clipCenterY +
                ", bounds=" + bounds +
                ", featureXOffset=" + featureXOffset +
                ", featureCount=" + featureCount +
@@ -281,10 +294,11 @@ public class LayerFeatures implements Serializable {
 
             this.processingMessages = sb.toString();
 
-        } else if (clipWidthFactor != null) {
+        } else if (isClipped()) {
 
             for (final Feature feature : featureList) {
                 feature.location[0] = feature.location[0] + featureXOffset;
+                feature.location[1] = feature.location[1] + featureYOffset;
             }
 
         }
@@ -364,6 +378,7 @@ public class LayerFeatures implements Serializable {
                                                               boundsUrlString,
                                                               montageFile,
                                                               featureListFile,
+                                                              null,
                                                               null);
         final List<Feature> featureList;
         try {
@@ -385,11 +400,17 @@ public class LayerFeatures implements Serializable {
                            final double height,
                            final Double scale) {
 
-        if ((clipWidthFactor == null) || (scale == null)) {
-            bounds = new Rectangle2D.Double(x, y, width, height);
-        } else {
-            final double widthAfterClip = clipWidthFactor * width;
+        if (isClipped()) {
+
+            final double definedWidthFactor = clipWidthFactor == null ? 1.0 : clipWidthFactor;
+            final double definedHeightFactor = clipHeightFactor == null ? 1.0 : clipHeightFactor;
+            final double definedScale = scale == null ? 1.0 : scale;
+
+            final double widthAfterClip = definedWidthFactor * width;
             final double clippedWidth = width - widthAfterClip;
+
+            final double heightAfterClip = definedHeightFactor * height;
+            final double clippedHeight = height - heightAfterClip;
 
             double deltaX = 0.0;
             if (clipCenterX != null) {
@@ -397,10 +418,27 @@ public class LayerFeatures implements Serializable {
                 deltaX = clipCenterX - actualCenterX;
             }
 
+            double deltaY = 0.0;
+            if (clipCenterY != null) {
+                final double actualCenterY = y + (height / 2.0);
+                deltaY = clipCenterY - actualCenterY;
+            }
+
             final double clipXOffset = (clippedWidth / 2.0) + deltaX;
             final double xAfterClip = x + clipXOffset;
-            bounds = new Rectangle2D.Double(xAfterClip, y, widthAfterClip, height);
-            featureXOffset = clipXOffset * scale;
+
+            final double clipYOffset = (clippedHeight / 2.0) + deltaY;
+            final double yAfterClip = y + clipYOffset;
+
+            bounds = new Rectangle2D.Double(xAfterClip, yAfterClip, widthAfterClip, heightAfterClip);
+
+            featureXOffset = clipXOffset * definedScale;
+            featureYOffset = clipYOffset * definedScale;
+
+        } else {
+
+            bounds = new Rectangle2D.Double(x, y, width, height);
+
         }
     }
 

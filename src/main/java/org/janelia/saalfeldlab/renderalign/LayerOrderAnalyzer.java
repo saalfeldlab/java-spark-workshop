@@ -122,9 +122,13 @@ public class LayerOrderAnalyzer {
                 usage = "If specified, rendered scapes will have left and right edges evenly clipped so that the rendered width is this factor times the actual width.")
         private Double clipWidthFactor = null;
 
-        @Option(name = "-al", aliases = {"--clipCenterXFile"}, required = false,
-                usage = "CSV file containing z amd clipCenterX values.")
-        private String clipCenterXFile = null;
+        @Option(name = "-am", aliases = {"--clipHeightFactor"}, required = false,
+                usage = "If specified, rendered scapes will have top and bottom edges evenly clipped so that the rendered height is this factor times the actual height.")
+        private Double clipHeightFactor = null;
+
+        @Option(name = "-al", aliases = {"--clipCenterFile"}, required = false,
+                usage = "CSV file containing z amd clipCenter coordinates.")
+        private String clipCenterFile = null;
 
         @Option(name = "-f", aliases = {"--forceMontageRendering"}, required = false,
                 usage = "Regenerate montage image even if it exists.")
@@ -398,9 +402,9 @@ public class LayerOrderAnalyzer {
         return zValues;
     }
 
-    public static Map<Double, Double> loadClipCenterXValues(final String fileName)
+    public static Map<Double, List<Double>> loadClipCenterCoordinates(final String fileName)
             throws IOException {
-        final Map<Double, Double> zToClipCenterXMap = new HashMap<>();
+        final Map<Double, List<Double>> zToClipCenterXMap = new HashMap<>();
         if (fileName != null) {
             final Pattern pattern = Pattern.compile("[^,]++");
             for (final String line : java.nio.file.Files.readAllLines(Paths.get(fileName),
@@ -409,12 +413,20 @@ public class LayerOrderAnalyzer {
                 if (m.find()) {
                     final Double z = new Double(line.substring(m.start(), m.end()));
                     if (m.find()) {
+                        final List<Double> coordinateList = new ArrayList<>();
                         final Double x = new Double(line.substring(m.start(), m.end()));
-                        zToClipCenterXMap.put(z, x);
+                        coordinateList.add(x);
+                        if (m.find()) {
+                            final Double y = new Double(line.substring(m.start(), m.end()));
+                            coordinateList.add(y);
+                        } else {
+                            coordinateList.add(null);
+                        }
+                        zToClipCenterXMap.put(z, coordinateList);
                     }
                 }
             }
-            logInfo("loaded " + zToClipCenterXMap.size() + " values from " + fileName);
+            logInfo("loaded " + zToClipCenterXMap.size() + " coordinates from " + fileName);
         }
         return zToClipCenterXMap;
     }
@@ -430,7 +442,7 @@ public class LayerOrderAnalyzer {
         siftParameters.fdSize = options.fdSize;
         siftParameters.steps = options.steps;
 
-        final Map<Double, Double> zToClipCenterXMap = loadClipCenterXValues(options.clipCenterXFile);
+        final Map<Double, List<Double>> zToClipCenterMap = loadClipCenterCoordinates(options.clipCenterFile);
 
         final JavaRDD<Double> rddZ = sc.parallelize(zValues);
 
@@ -444,11 +456,12 @@ public class LayerOrderAnalyzer {
                                                                       String.format(boundsUrlFormat, z),
                                                                       options.getMontageFile(z),
                                                                       options.getFeatureListFile(z),
-                                                                      options.clipWidthFactor);
+                                                                      options.clipWidthFactor,
+                                                                      options.clipHeightFactor);
 
-                final Double clipCenterX = zToClipCenterXMap.get(z);
-                if (clipCenterX != null) {
-                    layerFeatures.setClipCenterX(clipCenterX);
+                final List<Double> clipCenter = zToClipCenterMap.get(z);
+                if (clipCenter != null) {
+                    layerFeatures.setClipCenter(clipCenter.get(0), clipCenter.get(1));
                 }
 
                 layerFeatures.loadMontageAndExtractFeatures(options.forceMontageRendering,

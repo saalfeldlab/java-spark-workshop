@@ -61,7 +61,7 @@ public class LayerOrderAnalyzerTest {
             zValues.add(z);
             final File montageFile = new File(getMontageFilePath(z));
             final File featureListFile = new File(getFeatureListFilePath(z));
-            final LayerFeatures layerFeatures = new LayerFeatures(z, null, null, montageFile, featureListFile, null);
+            final LayerFeatures layerFeatures = new LayerFeatures(z, null, null, montageFile, featureListFile, null, null);
             layerFeatures.loadMontageAndExtractFeatures(false,
                                                         new FloatArray2DSIFT.Param(),
                                                         0.5,
@@ -95,7 +95,7 @@ public class LayerOrderAnalyzerTest {
     public void testClip()
             throws IOException {
 
-        final Double z = 1.0;
+        //final Double z = 1.0;
         //final String renderUrl =
                 //"http://tem-services.int.janelia.org:8080/render-ws/v1/owner/flyTEM/project/FAFB00/stack/v13_montage/z/" +
                 //z + "/render-parameters?scale=0.8";
@@ -104,7 +104,7 @@ public class LayerOrderAnalyzerTest {
                                  "stack/v12_acquire_merged/tile/150311140241101032.3334.0" +
                                  "/render-parameters?excludeMask=true&normalizeForMatching=true&width=2760&height=2330&scale=0.03";
 
-        final LayerFeatures layerFeatures = new LayerFeatures(1.0, renderUrl, null, null, null, null);
+        final LayerFeatures layerFeatures = new LayerFeatures(1.0, renderUrl, null, null, null, null, null);
         final List<Feature> featureList =
                 layerFeatures.loadMontageAndExtractFeatures(false,
                                                             new FloatArray2DSIFT.Param(),
@@ -114,7 +114,7 @@ public class LayerOrderAnalyzerTest {
         System.out.println(layerFeatures);
         printFeatureList("no clip", featureList);
 
-        final LayerFeatures clippedLayerFeatures = new LayerFeatures(1.0, renderUrl, null, null, null, 0.6);
+        final LayerFeatures clippedLayerFeatures = new LayerFeatures(1.0, renderUrl, null, null, null, 0.6, 0.6);
         final List<Feature> clippedFeatureList =
                 clippedLayerFeatures.loadMontageAndExtractFeatures(false,
                                                                    new FloatArray2DSIFT.Param(),
